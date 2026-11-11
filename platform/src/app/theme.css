@@ -1,0 +1,36 @@
+/* Gerado por scripts/gen-theme.mjs (semente #C2410C) — não edite à mão */
+:root {
+  --md-primary: #9b2f00;
+  --md-on-primary: #ffffff;
+  --md-primary-container: #c2410c;
+  --md-on-primary-container: #ffece7;
+  --md-secondary: #924a31;
+  --md-on-secondary: #ffffff;
+  --md-secondary-container: #fea182;
+  --md-on-secondary-container: #78351e;
+  --md-tertiary: #0051af;
+  --md-on-tertiary: #ffffff;
+  --md-tertiary-container: #0069de;
+  --md-on-tertiary-container: #ecf0ff;
+  --md-error: #ba1a1a;
+  --md-on-error: #ffffff;
+  --md-error-container: #ffdad6;
+  --md-on-error-container: #93000a;
+  --md-surface: #fff8f6;
+  --md-on-surface: #261814;
+  --md-on-surface-variant: #59413a;
+  --md-surface-dim: #eed5cd;
+  --md-surface-bright: #fff8f6;
+  --md-surface-container-lowest: #ffffff;
+  --md-surface-container-low: #fff1ed;
+  --md-surface-container: #ffe9e3;
+  --md-surface-container-high: #fce3db;
+  --md-surface-container-highest: #f7ddd6;
+  --md-outline: #8d7168;
+  --md-outline-variant: #e1bfb5;
+  --md-inverse-surface: #3c2d28;
+  --md-inverse-on-surface: #ffede8;
+  --md-inverse-primary: #ffb59d;
+  --md-scrim: #000000;
+  --md-shadow: #000000;
+}

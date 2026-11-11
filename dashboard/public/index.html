@@ -1,0 +1,227 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Observabilidade · Esteira Shopee</title>
+  <link rel="stylesheet" href="styles.css" />
+  <script src="theme.js"></script>
+</head>
+<body class="viz-root">
+  <!-- ===================== Acesso (configuração inicial / login) ===================== -->
+  <div class="auth-screen" id="auth-screen" hidden>
+    <form class="card auth-card" id="auth-form" novalidate>
+      <h1>Esteira Shopee Afiliados</h1>
+      <p class="muted" id="auth-intro"></p>
+
+      <label class="field" id="auth-code-field">
+        <span class="field-label">Código de configuração</span>
+        <input name="code" autocomplete="one-time-code" placeholder="ABCD-1234" />
+        <span class="field-help">Veja no terminal: <code>docker logs obs-dashboard</code></span>
+      </label>
+      <label class="field">
+        <span class="field-label">Usuário</span>
+        <input name="username" autocomplete="username" required />
+      </label>
+      <label class="field">
+        <span class="field-label">Senha</span>
+        <input name="password" type="password" autocomplete="current-password" required />
+        <span class="field-help" id="auth-pass-help" hidden>Mínimo de 10 caracteres.</span>
+      </label>
+
+      <p class="form-error" id="auth-error" role="alert" hidden></p>
+      <button type="submit" class="primary-btn" id="auth-submit">Entrar</button>
+    </form>
+  </div>
+
+  <!-- ===================== Aplicação ===================== -->
+  <div class="page" id="app" hidden>
+    <header class="topbar">
+      <div>
+        <h1>Esteira Shopee Afiliados</h1>
+        <p class="muted" id="updated">Carregando…</p>
+      </div>
+      <div class="topbar-actions">
+        <span class="muted small" id="whoami"></span>
+        <button type="button" class="ghost-btn" id="theme-toggle" aria-label="Alternar tema claro/escuro">
+          <span aria-hidden="true">◐</span> Tema
+        </button>
+        <button type="button" class="ghost-btn" id="logout">Sair</button>
+      </div>
+    </header>
+
+    <nav class="tabs" aria-label="Seções">
+      <a href="#/painel" class="tab" data-view="painel">Painel</a>
+      <a href="#/config" class="tab" data-view="config">Configurações <span class="tab-badge" id="config-badge" hidden>!</span></a>
+    </nav>
+
+    <!-- ---------- Painel ---------- -->
+    <div id="view-painel" class="view">
+      <div class="setup-banner card" id="setup-banner" hidden>
+        <span class="status-icon warning" aria-hidden="true">!</span>
+        <div>
+          <strong>Configuração incompleta.</strong>
+          <span id="setup-banner-text"></span>
+          <a href="#/config">Abrir configurações</a>
+        </div>
+      </div>
+
+      <!-- Filtro único: escopo de tudo abaixo -->
+      <div class="filters" role="radiogroup" aria-label="Período">
+        <span class="filters-label">Período</span>
+        <button type="button" role="radio" class="chip" data-range="24h" aria-checked="true">Últimas 24 horas</button>
+        <button type="button" role="radio" class="chip" data-range="7d" aria-checked="false">Últimos 7 dias</button>
+        <button type="button" role="radio" class="chip" data-range="30d" aria-checked="false">Últimos 30 dias</button>
+      </div>
+
+      <main id="main">
+        <section aria-labelledby="h-health">
+          <h2 id="h-health" class="section-title">Saúde dos serviços</h2>
+          <div class="health-grid" id="health"><div class="empty">Verificando serviços…</div></div>
+        </section>
+
+        <section aria-labelledby="h-kpi">
+          <h2 id="h-kpi" class="section-title">Resultados do período</h2>
+          <div class="kpi-grid">
+            <article class="card hero" id="kpi-hero"></article>
+            <div class="tiles" id="kpi-tiles"></div>
+          </div>
+        </section>
+
+        <section class="charts-grid">
+          <figure class="card chart-card wide" id="card-series">
+            <figcaption class="card-head">
+              <div>
+                <h3 id="series-title">Envios com sucesso</h3>
+                <p class="muted small" id="series-sub">Mensagens entregues por canal</p>
+              </div>
+              <button type="button" class="ghost-btn small" data-table-toggle="series">Ver tabela</button>
+            </figcaption>
+            <div class="legend" id="series-legend"></div>
+            <div class="chart" id="series-chart"></div>
+            <div class="table-view" id="series-table" hidden></div>
+          </figure>
+
+          <figure class="card chart-card" id="card-channels">
+            <figcaption class="card-head">
+              <div>
+                <h3>Taxa de entrega por canal</h3>
+                <p class="muted small">Envios bem-sucedidos ÷ tentativas</p>
+              </div>
+            </figcaption>
+            <div id="channels"></div>
+          </figure>
+
+          <figure class="card chart-card" id="card-keywords">
+            <figcaption class="card-head">
+              <div>
+                <h3>Palavras-chave que mais publicaram</h3>
+                <p class="muted small">Ofertas publicadas por palavra-chave</p>
+              </div>
+              <button type="button" class="ghost-btn small" data-table-toggle="keywords">Ver tabela</button>
+            </figcaption>
+            <div class="hbars" id="keywords-chart"></div>
+            <div class="table-view" id="keywords-table" hidden></div>
+          </figure>
+        </section>
+
+        <section aria-labelledby="h-offers">
+          <div class="card">
+            <div class="card-head">
+              <div>
+                <h3 id="h-offers">Últimas ofertas</h3>
+                <p class="muted small">12 mais recentes · status de entrega por canal</p>
+              </div>
+            </div>
+            <div class="table-scroll" id="offers"></div>
+          </div>
+        </section>
+
+        <section class="two-col">
+          <div class="card">
+            <div class="card-head">
+              <div>
+                <h3>Erros recentes</h3>
+                <p class="muted small">Falhas de envio e da API da Shopee</p>
+              </div>
+            </div>
+            <div class="table-scroll" id="errors"></div>
+          </div>
+          <div class="card">
+            <div class="card-head">
+              <div>
+                <h3>Execuções do n8n</h3>
+                <p class="muted small">Últimas 20 execuções</p>
+              </div>
+            </div>
+            <div class="table-scroll" id="executions"></div>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <!-- ---------- Configurações ---------- -->
+    <div id="view-config" class="view" hidden>
+      <section>
+        <div class="card readiness" id="readiness"></div>
+      </section>
+
+      <form id="settings-form" novalidate>
+        <div class="settings-grid" id="settings-groups"></div>
+
+        <section>
+          <div class="card">
+            <div class="card-head">
+              <div>
+                <h3>Infraestrutura</h3>
+                <p class="muted small">Definida no servidor (.env) — necessária para os containers iniciarem.</p>
+              </div>
+            </div>
+            <dl class="infra" id="infra"></dl>
+          </div>
+        </section>
+
+        <div class="save-bar" id="save-bar" hidden>
+          <span id="save-status">Alterações não salvas</span>
+          <div class="save-actions">
+            <button type="button" class="ghost-btn" id="discard">Descartar</button>
+            <button type="submit" class="primary-btn" id="save">Salvar alterações</button>
+          </div>
+        </div>
+      </form>
+
+      <section>
+        <form class="card" id="password-form" novalidate>
+          <div class="card-head">
+            <div>
+              <h3>Conta</h3>
+              <p class="muted small">Trocar a senha encerra as outras sessões abertas.</p>
+            </div>
+          </div>
+          <div class="fields">
+            <label class="field">
+              <span class="field-label">Senha atual</span>
+              <input name="current" type="password" autocomplete="current-password" />
+            </label>
+            <label class="field">
+              <span class="field-label">Nova senha</span>
+              <input name="next" type="password" autocomplete="new-password" />
+              <span class="field-help">Mínimo de 10 caracteres.</span>
+            </label>
+          </div>
+          <div class="group-foot">
+            <button type="submit" class="ghost-btn">Alterar senha</button>
+            <span class="test-result" id="password-result" role="status"></span>
+          </div>
+        </form>
+      </section>
+    </div>
+  </div>
+
+  <div class="toast" id="toast" role="status" hidden></div>
+  <div class="tooltip" id="tooltip" role="status" hidden></div>
+  <script src="app.js"></script>
+  <script src="settings.js"></script>
+  <script src="shell.js"></script>
+</body>
+</html>

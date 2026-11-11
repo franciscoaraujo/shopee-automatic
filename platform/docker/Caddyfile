@@ -1,0 +1,5 @@
+# HTTPS automático (Let's Encrypt). Aponte o DNS de {$DOMAIN} para o servidor antes de subir.
+{$DOMAIN} {
+	encode zstd gzip
+	reverse_proxy web:3000
+}

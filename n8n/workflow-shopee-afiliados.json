@@ -1,0 +1,671 @@
+{
+  "name": "Shopee Afiliados -> Telegram + WhatsApp",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "minutes",
+              "minutesInterval": 30
+            }
+          ]
+        }
+      },
+      "id": "5b0e0001-1a2b-4c3d-8e9f-0a1b2c3d4e5f",
+      "name": "A cada 30 min",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        0,
+        0
+      ]
+    },
+    {
+      "parameters": {},
+      "id": "5b0e0002-1a2b-4c3d-8e9f-0a1b2c3d4e5f",
+      "name": "Teste Manual",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        0,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "method": "GET",
+        "url": "={{ $env.DASHBOARD_INTERNAL_URL || 'http://dashboard:3100' }}/api/internal/config",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-ingest-token",
+              "value": "={{ $env.DASHBOARD_INGEST_TOKEN }}"
+            }
+          ]
+        },
+        "options": {
+          "timeout": 10000
+        }
+      },
+      "id": "5b0e0003-1a2b-4c3d-8e9f-0a1b2c3d4e5f",
+      "name": "Config",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        240,
+        100
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 5000,
+      "notes": "Credenciais vêm do painel (Configurações). Nada sensível fica salvo no workflow."
+    },
+    {
+      "parameters": {
+        "jsCode": "// =====================================================================\n// Code Node: \"Assinar productOfferV2\"   (Mode: Run Once for All Items)\n// Monta a query GraphQL productOfferV2 e calcula a assinatura SHA256:\n//   Signature = SHA256(AppID + Timestamp + Payload + Secret)\n// O \"Payload\" é exatamente a string JSON enviada no body. Por isso o body\n// sai daqui já serializado e o HTTP Request o envia em modo RAW, sem\n// re-serializar (qualquer espaço diferente invalida a assinatura).\n// Requer: NODE_FUNCTION_ALLOW_BUILTIN=crypto\n// =====================================================================\nconst crypto = require('crypto');\n\nconst cfg = $('Config').first().json;\n\nconst appId = String(cfg.shopeeAppId || '').trim();\nconst secret = String(cfg.shopeeSecret || '').trim();\nif (!appId || !secret) {\n  throw new Error('Shopee App ID / Secret não configurados — preencha em http://localhost:3100 → Configurações.');\n}\n\n// sortType: 1=RELEVANCE_DESC 2=ITEM_SOLD_DESC 3=PRICE_DESC 4=PRICE_ASC 5=COMMISSION_DESC\nconst sortType = parseInt(cfg.sortType, 10) || 5;\nconst limit = Math.min(Math.max(parseInt(cfg.searchLimit, 10) || 30, 1), 50);\n\nconst staticData = $getWorkflowStaticData('global');\nconst keywords = String(cfg.keywords || '')\n  .split(',')\n  .map((k) => k.trim())\n  .filter(Boolean);\n\nlet page;\nlet keyword = '';\nif ($runIndex > 0 && staticData.current) {\n  // Nova tentativa (erro temporário da Shopee): repete a MESMA busca, sem avançar o rodízio\n  ({ page, keyword } = staticData.current);\n} else {\n  // Rotaciona a página a cada execução para variar as ofertas\n  const maxPage = Math.max(parseInt(cfg.maxPage, 10) || 3, 1);\n  staticData.page = ((staticData.page || 0) % maxPage) + 1;\n  page = staticData.page;\n  // Palavra-chave: aceita lista separada por vírgula e rotaciona entre elas\n  if (keywords.length) {\n    staticData.kwIndex = ((staticData.kwIndex ?? -1) + 1) % keywords.length;\n    keyword = keywords[staticData.kwIndex];\n  }\n  staticData.current = { page, keyword };\n}\n\n// Argumentos GraphQL (JSON.stringify gera string literal válida em GraphQL)\nconst args = [`sortType: ${sortType}`, `page: ${page}`, `limit: ${limit}`];\nif (keyword) args.unshift(`keyword: ${JSON.stringify(keyword)}`);\n\nconst query = `query {\n  productOfferV2(${args.join(', ')}) {\n    nodes {\n      itemId\n      productName\n      productLink\n      offerLink\n      imageUrl\n      priceMin\n      priceMax\n      priceDiscountRate\n      commissionRate\n      commission\n      sales\n      ratingStar\n      shopName\n      shopId\n      periodStartTime\n      periodEndTime\n    }\n    pageInfo {\n      page\n      limit\n      hasNextPage\n    }\n  }\n}`;\n\nconst payload = JSON.stringify({ query });\nconst timestamp = Math.floor(Date.now() / 1000);\nconst signature = crypto\n  .createHash('sha256')\n  .update(`${appId}${timestamp}${payload}${secret}`, 'utf8')\n  .digest('hex');\n\nreturn [\n  {\n    json: {\n      url: 'https://open-api.affiliate.shopee.com.br/graphql',\n      authorization: `SHA256 Credential=${appId}, Timestamp=${timestamp}, Signature=${signature}`,\n      body: payload,\n      meta: { keyword: keyword || null, page, sortType, limit, attempt: $runIndex + 1 },\n    },\n  },\n];\n"
+      },
+      "id": "5b0e0004-1a2b-4c3d-8e9f-0a1b2c3d4e5f",
+      "name": "Assinar productOfferV2",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        480,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.url }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ $json.authorization }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ $json.body }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "5b0e0005-1a2b-4c3d-8e9f-0a1b2c3d4e5f",
+      "name": "Shopee - productOfferV2",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        720,
+        100
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    },
+    {
+      "parameters": {
+        "jsCode": "// =====================================================================\n// Code Node: \"Filtrar Ofertas\"   (Mode: Run Once for All Items)\n// Valida a resposta do productOfferV2, remove produtos já enviados\n// (deduplicação persistente via workflow static data), aplica filtros\n// de comissão/avaliação e devolve 1 item por produto selecionado.\n// =====================================================================\nconst cfg = $('Config').first().json;\nconst res = $input.first().json;\n\nif (Array.isArray(res.errors) && res.errors.length) {\n  const e = res.errors[0];\n  const code = e.extensions?.code ? ` [${e.extensions.code}]` : '';\n  throw new Error(`Shopee productOfferV2 falhou${code}: ${e.extensions?.message || e.message}`);\n}\n\nconst nodes = res?.data?.productOfferV2?.nodes || [];\nif (!nodes.length) return [];\n\nconst minCommission = parseFloat(cfg.minCommissionRate) || 0; // ex.: 0.08 = 8%\nconst minRating = parseFloat(cfg.minRating) || 0;             // ex.: 4.5\nconst maxPosts = parseInt(cfg.maxPostsPerRun, 10) || 3;\nconst dedupDays = parseInt(cfg.dedupDays, 10) || 7;\n\n// ----- deduplicação (itemId -> epoch do envio) -----\nconst staticData = $getWorkflowStaticData('global');\nstaticData.sent = staticData.sent || {};\nconst now = Date.now();\nconst ttl = dedupDays * 24 * 60 * 60 * 1000;\nfor (const [id, ts] of Object.entries(staticData.sent)) {\n  if (now - ts > ttl) delete staticData.sent[id];\n}\n\nconst nowSec = Math.floor(now / 1000);\n\nconst selected = nodes\n  .filter((p) => p && p.itemId && p.imageUrl && (p.offerLink || p.productLink))\n  .filter((p) => !staticData.sent[String(p.itemId)])\n  .filter((p) => !p.periodEndTime || Number(p.periodEndTime) === 0 || Number(p.periodEndTime) > nowSec)\n  .filter((p) => (parseFloat(p.commissionRate) || 0) >= minCommission)\n  .filter((p) => (parseFloat(p.ratingStar) || 0) >= minRating)\n  .sort((a, b) => (parseFloat(b.commission) || 0) - (parseFloat(a.commission) || 0))\n  .slice(0, maxPosts);\n\nreturn selected.map((p) => ({\n  json: {\n    itemId: String(p.itemId),\n    productName: p.productName,\n    productLink: p.productLink,\n    offerLink: p.offerLink,\n    imageUrl: p.imageUrl,\n    priceMin: parseFloat(p.priceMin) || 0,\n    priceMax: parseFloat(p.priceMax) || 0,\n    priceDiscountRate: parseInt(p.priceDiscountRate, 10) || 0,\n    commissionRate: parseFloat(p.commissionRate) || 0,\n    commission: parseFloat(p.commission) || 0,\n    sales: parseInt(p.sales, 10) || 0,\n    ratingStar: parseFloat(p.ratingStar) || 0,\n    shopName: p.shopName,\n  },\n}));\n"
+      },
+      "id": "5b0e0006-1a2b-4c3d-8e9f-0a1b2c3d4e5f",
+      "name": "Filtrar Ofertas",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "// =====================================================================\n// Code Node: \"Assinar generateShortLink\"   (Mode: Run Once for All Items)\n// Para cada produto, monta a mutation generateShortLink com SubIDs de\n// rastreio e assina com SHA256(AppID + Timestamp + Payload + Secret).\n// SubIDs: até 5 valores, apenas letras e números.\n// =====================================================================\nconst crypto = require('crypto');\n\nconst cfg = $('Config').first().json;\nconst appId = String(cfg.shopeeAppId || '').trim();\nconst secret = String(cfg.shopeeSecret || '').trim();\n\nconst sanitize = (s) => String(s ?? '').replace(/[^A-Za-z0-9]/g, '').slice(0, 50);\n\nconst now = new Date();\nconst dateTag = now.toISOString().slice(0, 10).replace(/-/g, ''); // AAAAMMDD\n\nreturn $input.all().map((item) => {\n  const p = item.json;\n  const originUrl = p.offerLink || p.productLink;\n\n  // sub1=campanha | sub2=canal | sub3=data | sub4=itemId\n  const subIds = [cfg.subIdCampaign || 'esteira', 'multicanal', dateTag, p.itemId]\n    .map(sanitize)\n    .filter(Boolean)\n    .slice(0, 5);\n\n  const query = `mutation {\n  generateShortLink(input: { originUrl: ${JSON.stringify(originUrl)}, subIds: ${JSON.stringify(subIds)} }) {\n    shortLink\n  }\n}`;\n\n  const payload = JSON.stringify({ query });\n  const timestamp = Math.floor(Date.now() / 1000);\n  const signature = crypto\n    .createHash('sha256')\n    .update(`${appId}${timestamp}${payload}${secret}`, 'utf8')\n    .digest('hex');\n\n  return {\n    json: {\n      ...p,\n      originUrl,\n      subIds,\n      url: 'https://open-api.affiliate.shopee.com.br/graphql',\n      authorization: `SHA256 Credential=${appId}, Timestamp=${timestamp}, Signature=${signature}`,\n      body: payload,\n    },\n  };\n});\n"
+      },
+      "id": "5b0e0007-1a2b-4c3d-8e9f-0a1b2c3d4e5f",
+      "name": "Assinar generateShortLink",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1440,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $json.url }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "={{ $json.authorization }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={{ $json.body }}",
+        "options": {
+          "timeout": 30000
+        }
+      },
+      "id": "5b0e0008-1a2b-4c3d-8e9f-0a1b2c3d4e5f",
+      "name": "Shopee - generateShortLink",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1680,
+        100
+      ],
+      "retryOnFail": true,
+      "maxTries": 3,
+      "waitBetweenTries": 3000
+    },
+    {
+      "parameters": {
+        "jsCode": "// =====================================================================\n// Code Node: \"Formatar Copy\"   (Mode: Run Once for All Items)\n// Junta o produto (nó \"Assinar generateShortLink\") com a resposta da\n// mutation (pela mesma posição), formata BRL, monta as legendas do\n// Telegram (Markdown) e WhatsApp e extrai a URL direta da imagem.\n// Marca o itemId como enviado para não repetir a oferta.\n// =====================================================================\nconst products = $('Assinar generateShortLink').all();\nconst responses = $input.all();\nconst staticData = $getWorkflowStaticData('global');\nstaticData.sent = staticData.sent || {};\n\nconst brl = (v) =>\n  new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(Number(v) || 0);\n\n// Escape do Markdown legado do Telegram (_ * ` [)\nconst escTg = (s) => String(s ?? '').replace(/([_*`\\[])/g, '\\\\$1');\n// WhatsApp não tem escape: remove caracteres de formatação do título\nconst cleanWa = (s) => String(s ?? '').replace(/[*_~`]/g, '');\n\nconst truncate = (s, n) => (s.length > n ? s.slice(0, n - 1).trim() + '…' : s);\n\nconst pick = (arr) => arr[Math.floor(Math.random() * arr.length)];\n\nconst hooks = [\n  '🚨 ACHADO DO DIA NA SHOPEE! 🚨',\n  '🔥 PROMOÇÃO RELÂMPAGO! 🔥',\n  '💥 PREÇO DE ERRO? CORRE! 💥',\n  '⚡ OFERTA IMPERDÍVEL ⚡',\n  '🛍️ ACHADINHO SHOPEE 🛍️',\n];\nconst scarcity = [\n  '⏳ Estoque limitado — pode acabar a qualquer momento!',\n  '⚠️ Preço promocional por tempo limitado!',\n  '🏃 Últimas unidades com esse valor!',\n  '⌛ Oferta válida enquanto durar o estoque!',\n];\n\n// Extrai a URL direta da imagem (Shopee às vezes retorna só o hash do arquivo)\nconst directImage = (img) => {\n  if (!img) return null;\n  const s = String(img).trim();\n  if (/^https?:\\/\\//i.test(s)) return s.replace(/^http:/i, 'https:');\n  return `https://down-br.img.susercontent.com/file/${s}`;\n};\n\nconst out = [];\n\nresponses.forEach((resItem, i) => {\n  const p = products[i]?.json;\n  if (!p) return;\n\n  const r = resItem.json;\n  if (Array.isArray(r.errors) && r.errors.length) {\n    const e = r.errors[0];\n    console.log(`generateShortLink falhou para ${p.itemId}: ${e.extensions?.message || e.message}`);\n    return; // pula o produto, não interrompe os outros\n  }\n\n  const link = r?.data?.generateShortLink?.shortLink || p.offerLink || p.productLink;\n\n  const price = p.priceMin;\n  const discount = p.priceDiscountRate;\n  const oldPrice = discount > 0 && discount < 100 ? price / (1 - discount / 100) : null;\n\n  const title = truncate(String(p.productName || 'Oferta Shopee').trim(), 120);\n  const hook = pick(hooks);\n  const urgency = pick(scarcity);\n  const rating = p.ratingStar ? `⭐ ${p.ratingStar.toFixed(1)}` : '';\n  const sold = p.sales ? `🛒 +${p.sales.toLocaleString('pt-BR')} vendidos` : '';\n  const social = [rating, sold].filter(Boolean).join('  |  ');\n\n  // ---------- Telegram (parse_mode: Markdown, máx. 1024 chars) ----------\n  const tgLines = [\n    `*${escTg(hook)}*`,\n    '',\n    `📦 *${escTg(title)}*`,\n    '',\n    oldPrice ? `❌ De: ${escTg(brl(oldPrice))}` : null, // Markdown legado não tem riscado\n    `✅ *Por: ${escTg(brl(price))}*${discount ? `  (-${discount}% OFF)` : ''}`,\n    social ? escTg(social) : null,\n    '',\n    escTg(urgency),\n    '',\n    `👉 [COMPRAR AGORA](${link})`,\n  ].filter((l) => l !== null);\n  let telegramCaption = tgLines.join('\\n');\n  if (telegramCaption.length > 1024) telegramCaption = telegramCaption.slice(0, 1020) + '…';\n\n  // ---------- WhatsApp (*negrito*, ~riscado~) ----------\n  const waLines = [\n    `*${hook}*`,\n    '',\n    `📦 *${cleanWa(title)}*`,\n    '',\n    oldPrice ? `❌ De: ~${brl(oldPrice)}~` : null,\n    `✅ *Por: ${brl(price)}*${discount ? `  (-${discount}% OFF)` : ''}`,\n    social || null,\n    '',\n    urgency,\n    '',\n    `👉 *COMPRE AQUI:* ${link}`,\n  ].filter((l) => l !== null);\n  const whatsappCaption = waLines.join('\\n');\n\n  staticData.sent[p.itemId] = Date.now();\n\n  out.push({\n    json: {\n      itemId: p.itemId,\n      productName: p.productName,\n      price,\n      priceFormatted: brl(price),\n      oldPriceFormatted: oldPrice ? brl(oldPrice) : null,\n      discount,\n      commissionRate: p.commissionRate,\n      commission: p.commission,\n      estimatedCommission: brl(p.commission),\n      affiliateLink: link,\n      imageUrl: directImage(p.imageUrl),\n      telegramCaption,\n      whatsappCaption,\n    },\n  });\n});\n\nreturn out;\n"
+      },
+      "id": "5b0e0009-1a2b-4c3d-8e9f-0a1b2c3d4e5f",
+      "name": "Formatar Copy",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1920,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "5b0e0216-1a2b-4c3d-8e9f-0a1b2c3d4e5f",
+              "leftValue": "={{ $('Config').first().json.telegramEnabled }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "5b0e0016-1a2b-4c3d-8e9f-0a1b2c3d4e5f",
+      "name": "Telegram ativo?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2160,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "5b0e0217-1a2b-4c3d-8e9f-0a1b2c3d4e5f",
+              "leftValue": "={{ $('Config').first().json.whatsappEnabled }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "5b0e0017-1a2b-4c3d-8e9f-0a1b2c3d4e5f",
+      "name": "WhatsApp ativo?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        2160,
+        200
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "=https://api.telegram.org/bot{{ $('Config').first().json.telegramBotToken }}/sendPhoto",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ chat_id: $('Config').first().json.telegramChatId, photo: $json.imageUrl, caption: $json.telegramCaption, parse_mode: 'Markdown' }) }}",
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 3000
+            }
+          },
+          "timeout": 30000
+        }
+      },
+      "id": "5b0e0010-1a2b-4c3d-8e9f-0a1b2c3d4e5f",
+      "name": "Telegram - sendPhoto",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2400,
+        0
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $('Config').first().json.evolutionUrl }}/message/sendMedia/{{ $('Config').first().json.evolutionInstance }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $('Config').first().json.evolutionApiKey }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ number: $('Config').first().json.whatsappGroupJid, mediatype: 'image', mimetype: 'image/jpeg', media: $json.imageUrl, fileName: 'oferta-' + $json.itemId + '.jpg', caption: $json.whatsappCaption }) }}",
+        "options": {
+          "batching": {
+            "batch": {
+              "batchSize": 1,
+              "batchInterval": 8000
+            }
+          },
+          "timeout": 60000
+        }
+      },
+      "id": "5b0e0011-1a2b-4c3d-8e9f-0a1b2c3d4e5f",
+      "name": "WhatsApp - Evolution sendMedia",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2400,
+        200
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "loose"
+          },
+          "conditions": [
+            {
+              "id": "5b0e0230-1a2b-4c3d-8e9f-0a1b2c3d4e5f",
+              "leftValue": "={{ [10000, 10030].includes(Number($json.errors?.[0]?.extensions?.code)) && $runIndex < 3 }}",
+              "rightValue": "",
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "5b0e0018-1a2b-4c3d-8e9f-0a1b2c3d4e5f",
+      "name": "Erro temporário Shopee?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        960,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "resume": "timeInterval",
+        "amount": 5,
+        "unit": "seconds"
+      },
+      "id": "5b0e0019-1a2b-4c3d-8e9f-0a1b2c3d4e5f",
+      "name": "Aguardar nova tentativa",
+      "type": "n8n-nodes-base.wait",
+      "typeVersion": 1.1,
+      "position": [
+        960,
+        320
+      ],
+      "webhookId": "5b0e0019-1a2b-4c3d-8e9f-0a1b2c3d4e5f"
+    },
+    {
+      "parameters": {
+        "jsCode": "// =====================================================================\n// Code Node: \"Obs - Resumo da Busca\"   (Mode: Run Once for All Items)\n// Lê a resposta do productOfferV2 e monta o evento \"run\" para o painel.\n// Fica ACIMA de \"Filtrar Ofertas\" no canvas: na ordem de execução v1 o\n// ramo superior roda primeiro, então a busca é registrada mesmo quando\n// \"Filtrar Ofertas\" lança erro (ex.: Invalid Signature).\n// =====================================================================\nconst res = $input.first().json;\nconst meta = $('Assinar productOfferV2').first().json.meta || {};\n\nlet error = null;\nif (Array.isArray(res.errors) && res.errors.length) {\n  const e = res.errors[0];\n  const code = e.extensions?.code ? `[${e.extensions.code}] ` : '';\n  error = `${code}${e.extensions?.message || e.message || 'Erro desconhecido'}`;\n}\n\nreturn [\n  {\n    json: {\n      type: 'run',\n      executionId: String($execution.id),\n      mode: $execution.mode,\n      keyword: meta.keyword,\n      page: meta.page,\n      sortType: meta.sortType,\n      found: (res?.data?.productOfferV2?.nodes || []).length,\n      error,\n    },\n  },\n];\n"
+      },
+      "id": "5b0e0012-1a2b-4c3d-8e9f-0a1b2c3d4e5f",
+      "name": "Obs - Resumo da Busca",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1200,
+        -160
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.DASHBOARD_INTERNAL_URL || 'http://dashboard:3100' }}/api/ingest",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-ingest-token",
+              "value": "={{ $env.DASHBOARD_INGEST_TOKEN }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "timeout": 5000
+        }
+      },
+      "id": "5b0e0013-1a2b-4c3d-8e9f-0a1b2c3d4e5f",
+      "name": "Obs - Registrar Busca",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1440,
+        -160
+      ],
+      "onError": "continueRegularOutput"
+    },
+    {
+      "parameters": {
+        "jsCode": "// =====================================================================\n// Code Node: \"Obs - Normalizar Entregas\"   (Mode: Run Once for All Items)\n// Recebe a saída de \"Telegram - sendPhoto\" OU \"WhatsApp - Evolution\n// sendMedia\" (executa uma vez para cada ramo) e monta um evento\n// \"deliveries\" com sucesso/erro de cada oferta.\n// Os nós de envio usam On Error = Continue, então falhas chegam aqui\n// como itens com o campo \"error\" em vez de interromper o workflow.\n// =====================================================================\nconst prev = typeof $prevNode !== 'undefined' && $prevNode ? $prevNode.name : '';\nconst responses = $input.all();\nconst offers = $('Formatar Copy').all();\n\n// Canal pelo nó anterior; se indisponível, pelo formato da resposta\nlet channel = /telegram/i.test(prev) ? 'telegram' : /whatsapp|evolution/i.test(prev) ? 'whatsapp' : null;\nif (!channel) {\n  const sample = responses.find((r) => r.json && !r.json.error)?.json || {};\n  channel = 'ok' in sample || 'result' in sample ? 'telegram' : 'whatsapp';\n}\n\nconst errorText = (r) => {\n  if (r.error) {\n    if (typeof r.error === 'string') return r.error;\n    return r.error.description || r.error.message || JSON.stringify(r.error).slice(0, 500);\n  }\n  if (channel === 'telegram' && r.ok === false) return r.description || 'Telegram retornou ok=false';\n  if (channel === 'whatsapp' && !r.key) return r.message ? JSON.stringify(r.message).slice(0, 500) : 'Evolution API não retornou key';\n  return null;\n};\n\nconst events = responses.map((item, i) => {\n  const r = item.json || {};\n  const o = offers[i]?.json || {};\n  const error = errorText(r);\n  return {\n    channel,\n    itemId: o.itemId,\n    productName: o.productName,\n    price: o.price,\n    commissionRate: o.commissionRate,\n    commission: o.commission,\n    affiliateLink: o.affiliateLink,\n    imageUrl: o.imageUrl,\n    success: !error,\n    error,\n    messageId: channel === 'telegram' ? r.result?.message_id : r.key?.id,\n  };\n});\n\nreturn [{ json: { type: 'deliveries', executionId: String($execution.id), events } }];\n"
+      },
+      "id": "5b0e0014-1a2b-4c3d-8e9f-0a1b2c3d4e5f",
+      "name": "Obs - Normalizar Entregas",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2640,
+        100
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "={{ $env.DASHBOARD_INTERNAL_URL || 'http://dashboard:3100' }}/api/ingest",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-ingest-token",
+              "value": "={{ $env.DASHBOARD_INGEST_TOKEN }}"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify($json) }}",
+        "options": {
+          "timeout": 5000
+        }
+      },
+      "id": "5b0e0015-1a2b-4c3d-8e9f-0a1b2c3d4e5f",
+      "name": "Obs - Registrar Entregas",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2880,
+        100
+      ],
+      "onError": "continueRegularOutput"
+    }
+  ],
+  "connections": {
+    "A cada 30 min": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Teste Manual": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Assinar productOfferV2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Assinar productOfferV2": {
+      "main": [
+        [
+          {
+            "node": "Shopee - productOfferV2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Shopee - productOfferV2": {
+      "main": [
+        [
+          {
+            "node": "Erro temporário Shopee?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Erro temporário Shopee?": {
+      "main": [
+        [
+          {
+            "node": "Aguardar nova tentativa",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Obs - Resumo da Busca",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Filtrar Ofertas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aguardar nova tentativa": {
+      "main": [
+        [
+          {
+            "node": "Assinar productOfferV2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Obs - Resumo da Busca": {
+      "main": [
+        [
+          {
+            "node": "Obs - Registrar Busca",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Filtrar Ofertas": {
+      "main": [
+        [
+          {
+            "node": "Assinar generateShortLink",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Assinar generateShortLink": {
+      "main": [
+        [
+          {
+            "node": "Shopee - generateShortLink",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Shopee - generateShortLink": {
+      "main": [
+        [
+          {
+            "node": "Formatar Copy",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Formatar Copy": {
+      "main": [
+        [
+          {
+            "node": "Telegram ativo?",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "WhatsApp ativo?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Telegram ativo?": {
+      "main": [
+        [
+          {
+            "node": "Telegram - sendPhoto",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "WhatsApp ativo?": {
+      "main": [
+        [
+          {
+            "node": "WhatsApp - Evolution sendMedia",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        []
+      ]
+    },
+    "Telegram - sendPhoto": {
+      "main": [
+        [
+          {
+            "node": "Obs - Normalizar Entregas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "WhatsApp - Evolution sendMedia": {
+      "main": [
+        [
+          {
+            "node": "Obs - Normalizar Entregas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Obs - Normalizar Entregas": {
+      "main": [
+        [
+          {
+            "node": "Obs - Registrar Entregas",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "America/Sao_Paulo"
+  },
+  "tags": []
+}

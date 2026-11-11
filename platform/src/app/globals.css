@@ -1,0 +1,128 @@
+@import "tailwindcss";
+@import "./theme.css";
+
+/* ------------------------------------------------------------------
+   Material Design 3 → Tailwind
+   Cores: papéis gerados em theme.css (scripts/gen-theme.mjs)
+   ------------------------------------------------------------------ */
+@theme inline {
+  --color-primary: var(--md-primary);
+  --color-on-primary: var(--md-on-primary);
+  --color-primary-container: var(--md-primary-container);
+  --color-on-primary-container: var(--md-on-primary-container);
+  --color-secondary: var(--md-secondary);
+  --color-on-secondary: var(--md-on-secondary);
+  --color-secondary-container: var(--md-secondary-container);
+  --color-on-secondary-container: var(--md-on-secondary-container);
+  --color-tertiary: var(--md-tertiary);
+  --color-on-tertiary: var(--md-on-tertiary);
+  --color-tertiary-container: var(--md-tertiary-container);
+  --color-on-tertiary-container: var(--md-on-tertiary-container);
+  --color-error: var(--md-error);
+  --color-on-error: var(--md-on-error);
+  --color-error-container: var(--md-error-container);
+  --color-on-error-container: var(--md-on-error-container);
+  --color-surface: var(--md-surface);
+  --color-on-surface: var(--md-on-surface);
+  --color-on-surface-variant: var(--md-on-surface-variant);
+  --color-surface-dim: var(--md-surface-dim);
+  --color-surface-bright: var(--md-surface-bright);
+  --color-surface-lowest: var(--md-surface-container-lowest);
+  --color-surface-low: var(--md-surface-container-low);
+  --color-surface-container: var(--md-surface-container);
+  --color-surface-high: var(--md-surface-container-high);
+  --color-surface-highest: var(--md-surface-container-highest);
+  --color-outline: var(--md-outline);
+  --color-outline-variant: var(--md-outline-variant);
+  --color-inverse-surface: var(--md-inverse-surface);
+  --color-inverse-on-surface: var(--md-inverse-on-surface);
+  --color-inverse-primary: var(--md-inverse-primary);
+  --color-success: #1b6c3c;
+  --color-success-container: #c8f0d2;
+  --color-on-success-container: #0b3a1d;
+  --color-wa: #0b5c4f;
+  --color-wa-chat: #efe7dd;
+
+  --font-sans: var(--font-body);
+  --font-display: var(--font-display);
+  --font-mono: ui-monospace, "Cascadia Mono", "SFMono-Regular", Menlo, monospace;
+
+  /* Formas (M3 shape scale) */
+  --radius-xs: 4px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 28px;
+
+  /* Elevação (M3 levels 1–3) */
+  --shadow-e1: 0 1px 2px rgb(0 0 0 / 0.3), 0 1px 3px 1px rgb(0 0 0 / 0.15);
+  --shadow-e2: 0 1px 2px rgb(0 0 0 / 0.3), 0 2px 6px 2px rgb(0 0 0 / 0.15);
+  --shadow-e3: 0 4px 8px 3px rgb(0 0 0 / 0.15), 0 1px 3px rgb(0 0 0 / 0.3);
+
+  --ease-emphasized: cubic-bezier(0.2, 0, 0, 1);
+}
+
+/* Escala tipográfica M3 (display ampliado para marketing) */
+@utility text-display-l { font-family: var(--font-display); font-size: clamp(2.6rem, 6vw, 4.75rem); line-height: 1.02; letter-spacing: -0.035em; font-weight: 700; }
+@utility text-display-m { font-family: var(--font-display); font-size: clamp(2.1rem, 4.2vw, 3.4rem); line-height: 1.06; letter-spacing: -0.03em; font-weight: 700; }
+@utility text-display-s { font-family: var(--font-display); font-size: clamp(1.8rem, 3vw, 2.4rem); line-height: 1.12; letter-spacing: -0.02em; font-weight: 650; }
+@utility text-headline-s { font-family: var(--font-display); font-size: 1.5rem; line-height: 2rem; letter-spacing: -0.01em; font-weight: 600; }
+@utility text-title-l { font-size: 1.375rem; line-height: 1.75rem; font-weight: 600; }
+@utility text-title-m { font-size: 1rem; line-height: 1.5rem; font-weight: 600; letter-spacing: 0.009em; }
+@utility text-title-s { font-size: 0.875rem; line-height: 1.25rem; font-weight: 600; letter-spacing: 0.006em; }
+@utility text-body-l { font-size: 1.0625rem; line-height: 1.65; }
+@utility text-body-m { font-size: 0.875rem; line-height: 1.25rem; letter-spacing: 0.016em; }
+@utility text-body-s { font-size: 0.75rem; line-height: 1rem; letter-spacing: 0.025em; }
+@utility text-label-l { font-size: 0.875rem; line-height: 1.25rem; font-weight: 600; letter-spacing: 0.006em; }
+@utility text-label-m { font-size: 0.75rem; line-height: 1rem; font-weight: 600; letter-spacing: 0.03em; }
+@utility text-label-s { font-size: 0.6875rem; line-height: 1rem; font-weight: 600; letter-spacing: 0.045em; }
+
+/* Camada de estado M3: hover 8%, foco/pressionado 10–12% da cor do conteúdo */
+@utility state-layer {
+  position: relative;
+  isolation: isolate;
+  &::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: currentColor;
+    opacity: 0;
+    pointer-events: none;
+    z-index: -1;
+    transition: opacity 150ms var(--ease-emphasized);
+  }
+  &:hover::before { opacity: 0.08; }
+  &:focus-visible::before { opacity: 0.12; }
+  &:active::before { opacity: 0.12; }
+}
+
+@layer base {
+  html { scroll-behavior: smooth; }
+  body {
+    background: var(--md-surface);
+    color: var(--md-on-surface);
+    font-family: var(--font-body), system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  ::selection { background: var(--md-primary-container); color: var(--md-on-primary-container); }
+  :focus-visible { outline: 2px solid var(--md-primary); outline-offset: 2px; }
+  @media (prefers-reduced-motion: reduce) {
+    html { scroll-behavior: auto; }
+    *, *::before, *::after { animation-duration: 0.01ms !important; transition-duration: 0.01ms !important; }
+  }
+}
+
+/* Entrada das mensagens no feed simulado */
+@keyframes msg-in {
+  from { opacity: 0; transform: translateY(12px) scale(0.98); }
+  to { opacity: 1; transform: none; }
+}
+.animate-msg-in { animation: msg-in 420ms var(--ease-emphasized) both; }
+
+@keyframes pulse-dot {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.35; }
+}
+.animate-pulse-dot { animation: pulse-dot 1.6s ease-in-out infinite; }
