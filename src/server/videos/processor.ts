@@ -11,6 +11,7 @@
 import { canTransition, NARRATIONS, type GenerationOptions, type ProductSnapshot, type VideoFormat, type VideoStatus } from '@/lib/videos';
 import { q } from '@/server/db';
 import { imageMime, inspectVideo, looksLikeMp4, MAX_IMAGE_BYTES, MAX_VIDEO_BYTES } from './media';
+import { platformAdapter } from './platform';
 import { createProvider } from './providers';
 import { ProviderError, type GenerationResult, type VideoGenerationProvider } from './providers/types';
 import { getProviderWithKey, logEvent } from './repo';
@@ -22,7 +23,7 @@ const GENERATION_TIMEOUT_MIN = Number(process.env.VIDEO_GENERATION_TIMEOUT_MIN |
 const LEASE_MIN = 10;
 
 export type Job = {
-  id: string; account_id: string; provider_id: string | null; provider_type: string; model: string; prompt: string; status: VideoStatus;
+  id: string; account_id: string; provider_id: string | null; provider_source: 'platform' | 'account'; provider_type: string; model: string; prompt: string; status: VideoStatus;
   options: GenerationOptions; product_snapshot: ProductSnapshot; requested_duration: number; requested_format: VideoFormat;
   provider_job_id: string | null; attempts: number; created_at: Date; updated_at: Date;
 };
@@ -101,6 +102,12 @@ export async function fetchReferenceImage(url: string | null, doFetch: typeof fe
 // "error" e some da tela de geração, para não gerar novos vídeos que vão falhar e consumir o
 // limite diário. Volta ao normal quando o cliente clica em "Testar conexão".
 async function flagProviderAccount(job: Job, issue: string) {
+  if (job.provider_source === 'platform') {
+    // Conta da PLATAFORMA (custo do operador): alerta o operador; o cliente não tem o que fazer
+    console.error('[vídeos premium] problema na conta Gemini da plataforma:', issue);
+    await logEvent({ accountId: job.account_id, projectId: job.id, provider: job.provider_type, event: 'platform.account_issue', error: issue });
+    return;
+  }
   if (!job.provider_id) return;
   await q(
     `UPDATE ai_providers SET connection_status = 'error', connection_message = $3, updated_at = now() WHERE account_id = $1 AND id = $2`,
@@ -110,6 +117,9 @@ async function flagProviderAccount(job: Job, issue: string) {
 }
 
 async function providerFor(job: Job): Promise<VideoGenerationProvider | string> {
+  if (job.provider_source === 'platform') {
+    try { return platformAdapter(); } catch { return 'Vídeos premium estão indisponíveis no momento. Tente mais tarde.'; }
+  }
   if (!job.provider_id) return 'O provedor de IA usado neste vídeo foi removido.';
   const p = await getProviderWithKey(job.account_id, job.provider_id);
   if (!p) return 'O provedor de IA usado neste vídeo foi removido.';
@@ -164,11 +174,15 @@ async function poll(job: Job, provider: VideoGenerationProvider) {
   }
   if (st.state === 'failed') {
     await logEvent({ accountId: job.account_id, projectId: job.id, provider: job.provider_type, event: 'generation.provider_failed', error: st.error, response: st.meta, ms: Date.now() - t0 });
+    // Problema na conta Gemini da PLATAFORMA: o cliente vê uma mensagem neutra (o detalhe fica no log)
+    const shown = job.provider_source === 'platform' && st.accountIssue
+      ? 'Vídeos premium estão temporariamente indisponíveis. Este vídeo não conta na sua cota; tente mais tarde.'
+      : st.error;
     if (st.retryable && job.attempts + 1 < MAX_ATTEMPTS) {
-      return move(job, 'PENDING', { attempts: job.attempts + 1, provider_job_id: null, error_message: st.error.slice(0, 1000), next_in_sec: backoffSec(job.attempts + 1) });
+      return move(job, 'PENDING', { attempts: job.attempts + 1, provider_job_id: null, error_message: shown.slice(0, 1000), next_in_sec: backoffSec(job.attempts + 1) });
     }
     if (st.accountIssue) await flagProviderAccount(job, st.accountIssue);
-    return fail(job, st.error);
+    return fail(job, shown);
   }
   await logEvent({ accountId: job.account_id, projectId: job.id, provider: job.provider_type, event: 'generation.completed', response: st.meta, ms: Date.now() - t0 });
   if (await move(job, 'PROCESSING', { attempts: 0, error_message: null })) await store(job, provider, st.result);

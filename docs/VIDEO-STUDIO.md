@@ -57,17 +57,25 @@ Fila, estados, armazenamento, telas e avaliação não mudam. Se o provedor não
 
 Os modelos Veo 3.1 Preview foram desligados na Gemini API em 22/10/2026. Por isso o adaptador usa o Omni Flash.
 
-### Gemini exige plano pago da Gemini API
+### Dois tipos de vídeo: Premium e Econômico
 
-O Gemini Omni Flash **não está disponível no plano gratuito** da Gemini API (a tabela de preços indica "Not available"). O cliente precisa de um projeto com **faturamento ativo** no AI Studio (Billing, pré-pago a partir de US$ 5). A assinatura **Google AI Pro/Ultra** (o app Gemini) **não libera a API sozinha**: os benefícios do plano valem só na interface do AI Studio. O que ela dá para a API são créditos mensais do Google Developer Program, que passam a valer depois de ativar o faturamento no projeto.
+| | **Premium: Google Gemini** | **Econômico: xAI Grok** |
+|---|---|---|
+| Quem paga | a **plataforma** (`PLATFORM_GEMINI_API_KEY`) | o **cliente**, na conta xAI dele |
+| Configuração do cliente | nenhuma | cadastra a própria chave em Vídeos → Configurações de IA |
+| Controle de custo | cota mensal por plano + teto de duração/resolução | o limite da conta xAI do cliente |
+| Custo de referência | ~US$ 0,07/s (720p) → ~US$ 0,70 por vídeo de 10 s | US$ 0,02/s (1.5 Lite), 0,05/s, 0,08/s (1.5) |
 
-Como o sistema garante isso:
-- **No cadastro:** o cliente confirma que o projeto da chave tem faturamento ativo. A confirmação é obrigatória e verificada no servidor, e a data fica registrada no provedor.
-- **Na prática:** o teste de conexão passa até no plano gratuito, porque listar modelos é grátis. Se uma geração for recusada por cota (`RESOURCE_EXHAUSTED`) mesmo depois das novas tentativas, o provedor é marcado com **"Plano pago necessário"** e sai da tela de geração até o cliente clicar em **Testar conexão** de novo.
+**Premium:**
+- **Chave da plataforma:** o Gemini Omni Flash **não existe no plano gratuito** da Gemini API, então a chave da plataforma precisa ser de um projeto com **faturamento ativo** no AI Studio (Billing, pré-pago a partir de US$ 5). A assinatura Google AI Pro/Ultra não libera a API sozinha, mas os créditos mensais dela (Google Developer Program) abatem o custo depois de ativar o faturamento.
+- **Cota mensal:** fica em `plans.premium_videos_month` (padrões: Start 2, Pro 5, Escala 15). Pode ser ajustada por cliente em `account_overrides.premium_videos_month`. Contas em teste grátis usam `PREMIUM_VIDEOS_TRIAL`. O mês segue o fuso de São Paulo, vídeos que falham não contam (o Google não cobra) e a cota é conferida dentro da trava da conta, então envios simultâneos não a furam.
+- **Teto de custo por vídeo:** `PLATFORM_VIDEO_MAX_DURATION` (padrão 10 s) e `PLATFORM_VIDEO_MAX_RESOLUTION` (padrão 720p).
+- **Disponibilidade:** é checada com a API real e fica em cache por 10 min. Se a conta da plataforma for recusada (`RESOURCE_EXHAUSTED`), o cliente vê "Vídeos premium estão temporariamente indisponíveis" e o detalhe vai para o log do servidor e para a auditoria (`platform.account_issue`).
 
-**Configuração:** cada cliente cadastra a própria chave em **Vídeos → Configurações de IA**. A chave é
-criptografada (AES-256-GCM com `APP_MASTER_KEY`, AAD amarrado à conta e ao provedor). Ela nunca volta
-ao navegador, aos logs nem às respostas: a tela mostra só os 4 últimos caracteres.
+**Econômico:**
+- **Chave do cliente:** cada cliente cadastra a própria chave do Grok. Ela é criptografada (AES-256-GCM com `APP_MASTER_KEY`, AAD amarrado à conta e ao provedor) e nunca volta ao navegador, aos logs nem às respostas: a tela mostra só os 4 últimos caracteres.
+- **Custo estimado:** a tela de geração mostra o custo estimado em US$, conforme o modelo e a duração escolhidos.
+- **Provedores exclusivos da plataforma:** provedores marcados com `clientConfigurable: false`, como o Gemini, não podem ser cadastrados pelo cliente.
 
 ## Variáveis de ambiente
 

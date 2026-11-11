@@ -50,6 +50,7 @@ export type ProviderDefinition = {
   label: string;
   docsUrl: string;
   keyHelp: string;                       // onde obter a chave
+  clientConfigurable: boolean;           // o cliente cadastra a própria chave? (false = só a plataforma usa)
   requirement?: { title: string; text: string; confirm: string }; // pré-requisito da conta, confirmado no cadastro
   keyPattern?: RegExp;                   // validação leve do formato da chave
   capabilities: ProviderCapabilities;    // capacidades documentadas (antes de validar a chave)

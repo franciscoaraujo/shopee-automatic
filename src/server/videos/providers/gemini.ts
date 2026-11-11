@@ -17,7 +17,7 @@ const BASE = 'https://generativelanguage.googleapis.com/v1beta';
 const API_REVISION = '2026-05-20';
 
 const omni = (id: string, label: string): ModelCapabilities => ({
-  id, label,
+  id, label, usdPerSecond: 0.07, // aproximado (cobrança por tokens; ~US$ 0,07/s em 720p)
   minDuration: 3, maxDuration: 15,
   aspectRatios: ['9:16', '16:9'],
   resolutions: ['360p', '720p', '1080p', '4k'],

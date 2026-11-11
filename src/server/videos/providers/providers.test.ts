@@ -178,6 +178,26 @@ describe('GrokVideoProvider', () => {
   });
 });
 
+describe('IA da plataforma (premium)', () => {
+  it('aplica os limites de custo do operador ao modelo', async () => {
+    const { platformConfig } = await import('../platform');
+    expect(platformConfig({ PLATFORM_VIDEO_MAX_DURATION: '99', PLATFORM_VIDEO_MAX_RESOLUTION: 'xx' } as unknown as NodeJS.ProcessEnv)).toMatchObject({ maxDuration: 15, maxResolution: '720p', model: 'gemini-omni-1.2-flash' });
+    process.env.PLATFORM_VIDEO_MAX_DURATION = '8';
+    process.env.PLATFORM_VIDEO_MAX_RESOLUTION = '720p';
+    const { platformModel } = await import('../platform');
+    const m = platformModel()!;
+    expect(m.maxDuration).toBe(8);
+    expect(m.resolutions).toEqual(['360p', '720p']);
+    expect(m.notes.join(' ')).not.toMatch(/plano gratuito/);          // quem paga é a plataforma
+    delete process.env.PLATFORM_VIDEO_MAX_DURATION;
+    delete process.env.PLATFORM_VIDEO_MAX_RESOLUTION;
+  });
+  it('o cliente só cadastra provedores configuráveis (Grok)', async () => {
+    const { providerTypes } = await import('./index');
+    expect(providerTypes().map((t) => t.type)).toEqual(['xai']);
+  });
+});
+
 describe('formato das chaves', () => {
   it('aceita a chave clássica (AIza…) e a nova (AQ.…) do Google', async () => {
     const { PROVIDERS } = await import('./index');

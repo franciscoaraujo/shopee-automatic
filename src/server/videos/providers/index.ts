@@ -10,14 +10,12 @@ export const PROVIDERS: Record<string, ProviderDefinition> = {
   gemini: {
     type: 'gemini',
     label: 'Google Gemini',
+    // Vídeos premium: usado só com a chave da PLATAFORMA (ver ../platform.ts). O cliente não cadastra.
+    clientConfigurable: false,
     docsUrl: 'https://aistudio.google.com/docs/omni',
-    keyHelp: 'Crie a chave em aistudio.google.com → Get API key, no projeto que tem o faturamento ativo.',
-    requirement: {
-      title: 'Requer plano pago da Gemini API',
-      text: 'A geração de vídeo (Gemini Omni Flash) não existe no plano gratuito. O projeto da chave precisa ter faturamento ativo no AI Studio (Billing). '
-        + 'A assinatura Google AI Pro/Ultra não libera a API sozinha: ela dá créditos mensais, que passam a valer para a API depois de ativar o faturamento e vincular os créditos pelo Google Developer Program.',
-      confirm: 'Confirmo que o projeto desta chave tem faturamento ativo (plano pago da Gemini API).',
-    },
+    // A chave da plataforma (PLATFORM_GEMINI_API_KEY) precisa ser de um projeto com faturamento
+    // ativo: o Gemini Omni Flash não existe no plano gratuito da Gemini API.
+    keyHelp: 'Chave da Gemini API de um projeto com faturamento ativo (aistudio.google.com → Billing).',
     // Formatos aceitos: clássico "AIza…" e o novo "AQ.…" (com ponto)
     keyPattern: /^[A-Za-z0-9._-]{30,200}$/,
     capabilities: GEMINI_CAPABILITIES,
@@ -26,6 +24,7 @@ export const PROVIDERS: Record<string, ProviderDefinition> = {
   xai: {
     type: 'xai',
     label: 'xAI Grok',
+    clientConfigurable: true,
     docsUrl: 'https://docs.x.ai/developers/model-capabilities/video/generation',
     keyHelp: 'Crie a chave em console.x.ai → API Keys, com permissão para os endpoints de vídeo.',
     keyPattern: /^xai-[A-Za-z0-9_-]{20,}$/,
@@ -34,8 +33,9 @@ export const PROVIDERS: Record<string, ProviderDefinition> = {
   },
 };
 
+// Tipos que o cliente pode cadastrar com a própria chave
 export const providerTypes = () =>
-  Object.values(PROVIDERS).map(({ type, label, docsUrl, keyHelp, requirement, capabilities }) => ({ type, label, docsUrl, keyHelp, requirement, capabilities }));
+  Object.values(PROVIDERS).filter((p) => p.clientConfigurable).map(({ type, label, docsUrl, keyHelp, requirement, capabilities }) => ({ type, label, docsUrl, keyHelp, requirement, capabilities }));
 
 export function getProviderDefinition(type: string): ProviderDefinition | null {
   return Object.prototype.hasOwnProperty.call(PROVIDERS, type) ? PROVIDERS[type] : null;

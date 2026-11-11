@@ -12,8 +12,11 @@ import {
 
 const BASE = 'https://api.x.ai/v1';
 
+// Preços oficiais por segundo (docs.x.ai/developers/models, 11/2026)
+const GROK_PRICES: Record<string, number> = { 'grok-imagine-video-1.5': 0.08, 'grok-imagine-video-1.5-lite': 0.02, 'grok-imagine-video': 0.05 };
+
 export const grokModel = (id: string, label = id): ModelCapabilities => ({
-  id, label,
+  id, label, usdPerSecond: GROK_PRICES[id],
   minDuration: 1, maxDuration: 15,
   aspectRatios: ['9:16', '16:9', '1:1'],
   resolutions: ['480p', '720p', '1080p'],
@@ -28,7 +31,11 @@ export const grokModel = (id: string, label = id): ModelCapabilities => ({
 
 export const GROK_CAPABILITIES: ProviderCapabilities = {
   videoGeneration: true,
-  models: [grokModel('grok-imagine-video-1.5', 'Grok Imagine Video 1.5'), grokModel('grok-imagine-video', 'Grok Imagine Video')],
+  models: [
+    grokModel('grok-imagine-video-1.5-lite', 'Grok Imagine Video 1.5 Lite (mais barato)'),
+    grokModel('grok-imagine-video', 'Grok Imagine Video'),
+    grokModel('grok-imagine-video-1.5', 'Grok Imagine Video 1.5'),
+  ],
 };
 
 type Poll = {

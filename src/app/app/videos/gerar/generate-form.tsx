@@ -13,8 +13,13 @@ import type { ProductRow } from '@/server/videos/repo';
 import { generateVideosAction, searchProductsAction, type ActionResult } from '../actions';
 
 export type ProviderOption = {
-  id: string; name: string; typeLabel: string; isDefault: boolean; defaultModel: string | null; models: ModelCapabilities[]; defaultResolution: string | null;
+  id: string; tier: 'premium' | 'economic'; name: string; typeLabel: string; isDefault: boolean; defaultModel: string | null;
+  models: ModelCapabilities[]; defaultResolution: string | null;
+  unavailable: string | null;                                        // motivo para não poder usar agora
+  quota: { limit: number; used: number; remaining: number } | null;  // só no premium
 };
+
+const usd = (v: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2 }).format(v);
 type Page = { items: ProductRow[]; total: number; page: number; pages: number };
 
 const brl = (v: number | null) => (v ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v) : '—');
@@ -43,7 +48,7 @@ function Choice({ name, value, checked, disabled, onChange, title, sub }: { name
   );
 }
 
-export function GenerateForm({ providers, categories, initial, preselected }: { providers: ProviderOption[]; categories: string[]; initial: Page; preselected: ProductRow[] }) {
+export function GenerateForm({ providers, needsKey, categories, initial, preselected }: { providers: ProviderOption[]; needsKey: boolean; categories: string[]; initial: Page; preselected: ProductRow[] }) {
   /* -------- 1. produtos */
   const [page, setPage] = useState<Page>(initial);
   const [search, setSearch] = useState('');
@@ -69,7 +74,9 @@ export function GenerateForm({ providers, categories, initial, preselected }: { 
   });
 
   /* -------- 2–8. configuração */
-  const [providerId, setProviderId] = useState(() => (providers.find((p) => p.isDefault) ?? providers[0])?.id ?? '');
+  // Começa pelo premium quando disponível; senão, pela chave padrão do cliente
+  const [providerId, setProviderId] = useState(() =>
+    (providers.find((p) => p.tier === 'premium' && !p.unavailable) ?? providers.find((p) => p.tier === 'economic' && p.isDefault) ?? providers.find((p) => !p.unavailable))?.id ?? '');
   const provider = providers.find((p) => p.id === providerId);
   const [modelId, setModelId] = useState(() => provider?.defaultModel ?? provider?.models[0]?.id ?? '');
   const caps = provider?.models.find((m) => m.id === modelId);
@@ -109,6 +116,7 @@ export function GenerateForm({ providers, categories, initial, preselected }: { 
   /* -------- 9. prompts (automáticos até o usuário editar) */
   const [edited, setEdited] = useState<Record<string, string>>({});
   const products = useMemo(() => [...selected.values()], [selected]);
+  const overQuota = provider?.tier === 'premium' && !!provider.quota && products.length > provider.quota.remaining;
   const autoPrompt = (p: ProductRow) => buildVideoPrompt(p, options, format, duration);
   const promptOf = (p: ProductRow) => edited[p.itemId] ?? autoPrompt(p);
 
@@ -125,7 +133,7 @@ export function GenerateForm({ providers, categories, initial, preselected }: { 
     if (r.ok) { setRequestKey(newKey()); setSelected(new Map()); setEdited({}); }
   });
 
-  if (!providers.length) {
+  if (!providers.some((p) => !p.unavailable) && needsKey) {
     return (
       <div className="rounded-xl border border-outline-variant/70 bg-surface-lowest p-8 text-center">
         <Icon name="tune" size={32} className="mx-auto text-primary" />
@@ -194,19 +202,47 @@ export function GenerateForm({ providers, categories, initial, preselected }: { 
           )}
         </Step>
 
-        <Step n={2} title="Provedor e modelo" hint="Os limites abaixo vêm do modelo escolhido.">
-          <div className="grid gap-4 sm:grid-cols-2">
-            <label className="flex flex-col gap-1 text-label-m text-on-surface-variant">Provedor de IA
-              <select value={providerId} onChange={(e) => chooseProvider(e.target.value)} className={selectCls}>
-                {providers.map((p) => <option key={p.id} value={p.id}>{p.name} ({p.typeLabel}){p.isDefault ? ' · padrão' : ''}</option>)}
-              </select>
-            </label>
-            <label className="flex flex-col gap-1 text-label-m text-on-surface-variant">Modelo
-              <select value={modelId} onChange={(e) => chooseModel(e.target.value)} className={selectCls}>
-                {provider?.models.map((m) => <option key={m.id} value={m.id}>{m.label}</option>)}
-              </select>
-            </label>
+        <Step n={2} title="Tipo de vídeo" hint="Premium usa a IA da plataforma (incluída no plano). Econômico usa a sua chave do Grok.">
+          <div className="grid gap-3 sm:grid-cols-2">
+            {providers.map((p) => {
+              const on = p.id === providerId;
+              const off = !!p.unavailable;
+              const minPrice = Math.min(...p.models.map((m) => m.usdPerSecond ?? Infinity));
+              return (
+                <label key={p.id} className={`flex items-start gap-3 rounded-md border p-4 ${off ? 'cursor-not-allowed opacity-60' : 'state-layer cursor-pointer'} ${on ? 'border-primary bg-primary/5' : 'border-outline-variant'}`}>
+                  <input type="radio" name="provider" value={p.id} checked={on} disabled={off} onChange={() => chooseProvider(p.id)} className="mt-1 accent-[var(--md-primary)]" />
+                  <span className="min-w-0">
+                    <span className="flex flex-wrap items-center gap-2 text-title-s">
+                      {p.tier === 'premium' ? 'Premium' : 'Econômico'}
+                      <span className={`rounded-xs px-1.5 text-label-s ${p.tier === 'premium' ? 'bg-primary text-on-primary' : 'bg-secondary-container text-on-secondary-container'}`}>{p.typeLabel}</span>
+                    </span>
+                    <span className="mt-1 block text-body-s text-on-surface-variant">
+                      {p.tier === 'premium'
+                        ? (p.quota ? `Incluído no seu plano · ${p.quota.remaining} de ${p.quota.limit} restantes este mês` : 'Incluído no seu plano')
+                        : `Sua chave “${p.name}” · cobrado na sua conta xAI${Number.isFinite(minPrice) ? ` · a partir de ${usd(minPrice)}/s` : ''}`}
+                    </span>
+                    {p.unavailable && <span className="mt-1 block text-body-s text-error">{p.unavailable}</span>}
+                  </span>
+                </label>
+              );
+            })}
+            {needsKey && (
+              <Link href="/app/videos/ia" className="state-layer flex items-start gap-3 rounded-md border border-dashed border-outline p-4">
+                <Icon name="add_circle" className="mt-0.5 text-primary" />
+                <span>
+                  <span className="block text-title-s">Econômico · xAI Grok</span>
+                  <span className="block text-body-s text-on-surface-variant">Cadastre sua chave do Grok para gerar vídeos mais baratos, cobrados na sua conta xAI.</span>
+                </span>
+              </Link>
+            )}
           </div>
+          {provider && provider.models.length > 1 && (
+            <label className="mt-4 flex max-w-md flex-col gap-1 text-label-m text-on-surface-variant">Modelo
+              <select value={modelId} onChange={(e) => chooseModel(e.target.value)} className={selectCls}>
+                {provider.models.map((m) => <option key={m.id} value={m.id}>{m.label}{m.usdPerSecond ? ` · ${usd(m.usdPerSecond)}/s` : ''}</option>)}
+              </select>
+            </label>
+          )}
           {caps && caps.notes.length > 0 && (
             <ul className="mt-4 space-y-1 text-body-s text-on-surface-variant">
               {caps.notes.map((x) => <li key={x} className="flex gap-2"><Icon name="info" size={16} className="mt-0.5 shrink-0" /> {x}</li>)}
@@ -321,6 +357,12 @@ export function GenerateForm({ providers, categories, initial, preselected }: { 
             <div className="flex justify-between gap-3"><dt className="text-on-surface-variant">Duração</dt><dd>{duration} s · {resolution}</dd></div>
             <div className="flex justify-between gap-3"><dt className="text-on-surface-variant">Estilo</dt><dd className="text-right">{STYLES[style].label}</dd></div>
             <div className="flex justify-between gap-3"><dt className="text-on-surface-variant">Narração</dt><dd>{NARRATIONS[narration].label}</dd></div>
+            {provider?.tier === 'premium' && provider.quota && (
+              <div className="flex justify-between gap-3"><dt className="text-on-surface-variant">Cota premium</dt><dd className="tabular-nums">usa {Math.max(products.length, 1)} de {provider.quota.remaining} restantes</dd></div>
+            )}
+            {provider?.tier === 'economic' && caps?.usdPerSecond && (
+              <div className="flex justify-between gap-3"><dt className="text-on-surface-variant">Custo estimado (xAI)</dt><dd className="tabular-nums">{usd(caps.usdPerSecond * duration * Math.max(products.length, 1))}</dd></div>
+            )}
           </dl>
           {products.length > 0 && (
             <ul className="mt-4 space-y-1 border-t border-outline-variant/60 pt-4">
@@ -333,7 +375,8 @@ export function GenerateForm({ providers, categories, initial, preselected }: { 
             </ul>
           )}
           {issues.length > 0 && <ul className="mt-4 space-y-1 text-body-s text-error">{issues.map((i) => <li key={i.field}>{i.message}</li>)}</ul>}
-          <Button type="button" icon="movie" className="mt-5 w-full" disabled={sending || !products.length || issues.length > 0} onClick={submit}>
+          {overQuota && <p className="mt-4 text-body-s text-error">Sua cota premium tem {provider!.quota!.remaining} vídeo(s) restante(s) este mês. Remova produtos ou use a opção econômica.</p>}
+          <Button type="button" icon="movie" className="mt-5 w-full" disabled={sending || !products.length || issues.length > 0 || overQuota || !provider || !!provider.unavailable} onClick={submit}>
             {sending ? 'Enviando…' : `Gerar ${products.length > 1 ? `${products.length} vídeos` : 'vídeo'}`}
           </Button>
           <p className="mt-3 text-body-s text-on-surface-variant">A geração é cobrada pelo provedor. Os vídeos ficam só na galeria interna; nada é publicado.</p>

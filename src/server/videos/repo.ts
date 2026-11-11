@@ -9,6 +9,7 @@ import {
 } from '@/lib/videos';
 import { decrypt, encrypt } from '@/server/crypto';
 import { one, q, tx } from '@/server/db';
+import { PLATFORM_LABEL, PLATFORM_PROVIDER_ID, PLATFORM_PROVIDER_TYPE, platformModel, platformStatus, premiumQuota } from './platform';
 import { getProviderDefinition } from './providers';
 import type { ConnectionResult } from './providers/types';
 
@@ -86,6 +87,7 @@ export async function getProviderWithKey(accountId: string, id: string): Promise
 function checkKey(type: string, apiKey: string) {
   const def = getProviderDefinition(type);
   if (!def) throw new VideoError('Tipo de provedor inválido.', 'type');
+  if (!def.clientConfigurable) throw new VideoError(`${def.label} é fornecido pela plataforma (vídeos premium) e não precisa de chave.`, 'type');
   const key = apiKey.trim();
   if (key.length < 10 || key.length > 300 || /\s/.test(key)) throw new VideoError('Chave de API inválida.', 'apiKey');
   if (def.keyPattern && !def.keyPattern.test(key)) throw new VideoError(`O formato não parece uma chave de ${def.label}.`, 'apiKey');
@@ -244,11 +246,24 @@ export async function createProjects(accountId: string, userId: string | null, i
   if (input.items.length > MAX_PRODUCTS_PER_REQUEST) throw new VideoError(`Selecione no máximo ${MAX_PRODUCTS_PER_REQUEST} produtos por vez.`, 'products');
   if (new Set(input.items.map((i) => i.productId)).size !== input.items.length) throw new VideoError('Produto repetido na seleção.', 'products');
 
-  const provider = await getProvider(accountId, input.providerId);
-  if (!provider) throw new VideoError('Provedor não encontrado.', 'provider');
-  if (!provider.enabled) throw new VideoError('Este provedor está desativado.', 'provider');
-  if (provider.status !== 'ok') throw new VideoError('Teste a conexão do provedor antes de gerar.', 'provider');
-  const caps = provider.models.find((m) => m.id === input.model);
+  // Origem: IA da plataforma (premium, custo do operador) ou chave do próprio cliente (econômico)
+  const platform = input.providerId === PLATFORM_PROVIDER_ID;
+  let provider: { id: string | null; type: string; source: 'platform' | 'account' };
+  let caps: ModelCapabilities | undefined;
+  if (platform) {
+    const st = await platformStatus();
+    if (!st.ok) throw new VideoError(st.message, 'provider');
+    caps = platformModel() ?? undefined;
+    if (caps && caps.id !== input.model) caps = undefined;
+    provider = { id: null, type: PLATFORM_PROVIDER_TYPE, source: 'platform' };
+  } else {
+    const p = await getProvider(accountId, input.providerId);
+    if (!p) throw new VideoError('Provedor não encontrado.', 'provider');
+    if (!p.enabled) throw new VideoError('Este provedor está desativado.', 'provider');
+    if (p.status !== 'ok') throw new VideoError('Teste a conexão do provedor antes de gerar.', 'provider');
+    caps = p.models.find((m) => m.id === input.model);
+    provider = { id: p.id, type: p.type, source: 'account' };
+  }
   const issues = validateRequest(caps, { duration: input.duration, format: input.format, narration: input.options.narration, resolution: input.options.resolution });
   if (issues.length) throw new VideoError(issues[0].message, issues[0].field);
 
@@ -280,6 +295,15 @@ export async function createProjects(accountId: string, userId: string | null, i
       if (Number(active) + toCreate.length > LIMITS.active) {
         throw new VideoError(`No máximo ${LIMITS.active} vídeos em geração ao mesmo tempo. Aguarde os atuais terminarem.`, 'products');
       }
+      if (platform) {
+        // dentro da trava da conta: envios simultâneos não furam a cota
+        const quota = await premiumQuota(accountId);
+        if (toCreate.length > quota.remaining) {
+          throw new VideoError(quota.limit === 0
+            ? 'Seu plano não inclui vídeos premium. Use a opção econômica (Grok) ou fale com o suporte.'
+            : `Cota de vídeos premium do mês: ${quota.used} de ${quota.limit} usados. Restam ${quota.remaining}.`, 'products');
+        }
+      }
     }
     let version = 1;
     if (input.parentProjectId) {
@@ -293,11 +317,11 @@ export async function createProjects(accountId: string, userId: string | null, i
       const prev = done.get(keys[i]);
       if (prev) { ids.push(prev); continue; }
       const r = await c.query<{ id: string }>(
-        `INSERT INTO video_projects (account_id, product_id, product_snapshot, provider_id, provider_type, model, prompt, options,
+        `INSERT INTO video_projects (account_id, product_id, product_snapshot, provider_id, provider_type, provider_source, model, prompt, options,
                                      requested_duration, requested_format, idempotency_key, parent_project_id, version, created_by)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
          ON CONFLICT (account_id, idempotency_key) DO NOTHING RETURNING id`,
-        [accountId, it.productId, JSON.stringify(products.get(it.productId)), provider.id, provider.type, input.model, it.prompt.trim(),
+        [accountId, it.productId, JSON.stringify(products.get(it.productId)), provider.id, provider.type, provider.source, input.model, it.prompt.trim(),
           JSON.stringify(input.options), input.duration, input.format, keys[i], input.parentProjectId ?? null, version, userId]
       );
       if (r[0]) { ids.push(r[0].id); createdIds.push(r[0].id); }
@@ -313,7 +337,7 @@ export async function createProjects(accountId: string, userId: string | null, i
 
 /* ================================================================== Consultas: galeria, detalhe, painel */
 export type ProjectView = {
-  id: string; productId: string; product: ProductSnapshot; providerId: string | null; providerType: string; providerLabel: string; model: string;
+  id: string; productId: string; product: ProductSnapshot; providerId: string | null; source: 'platform' | 'account'; providerType: string; providerLabel: string; model: string;
   prompt: string; options: GenerationOptions; status: VideoStatus; duration: number; format: VideoFormat; version: number; parentProjectId: string | null;
   attempts: number; errorMessage: string | null; createdAt: string; updatedAt: string;
   video: { id: string; storagePath: string; thumbnailPath: string | null; duration: number | null; resolution: string | null; fileSize: number } | null;
@@ -323,7 +347,8 @@ export type ProjectView = {
 function toProject(r: Record<string, unknown>): ProjectView {
   return {
     id: String(r.id), productId: String(r.product_id), product: r.product_snapshot as ProductSnapshot, providerId: (r.provider_id as string) ?? null,
-    providerType: String(r.provider_type), providerLabel: getProviderDefinition(String(r.provider_type))?.label ?? String(r.provider_type),
+    source: r.provider_source === 'platform' ? 'platform' : 'account', providerType: String(r.provider_type),
+    providerLabel: r.provider_source === 'platform' ? PLATFORM_LABEL : getProviderDefinition(String(r.provider_type))?.label ?? String(r.provider_type),
     model: String(r.model), prompt: String(r.prompt), options: r.options as GenerationOptions, status: r.status as VideoStatus,
     duration: Number(r.requested_duration), format: r.requested_format as VideoFormat, version: Number(r.version),
     parentProjectId: (r.parent_project_id as string) ?? null, attempts: Number(r.attempts), errorMessage: (r.error_message as string) ?? null,
@@ -488,14 +513,15 @@ export async function addReview(
 export async function newVersion(accountId: string, userId: string, projectId: string, adjustments = '', requestKey?: string): Promise<string> {
   const p = await getProject(accountId, projectId);
   if (!p) throw new VideoError('Vídeo não encontrado.');
-  if (!p.providerId) throw new VideoError('O provedor usado foi removido. Gere um vídeo novo pela tela "Gerar vídeos".');
+  const providerId = p.source === 'platform' ? PLATFORM_PROVIDER_ID : p.providerId;
+  if (!providerId) throw new VideoError('O provedor usado foi removido. Gere um vídeo novo pela tela "Gerar vídeos".');
   // Retrato atualizado do produto (preço pode ter mudado); se saiu do histórico, mantém o anterior
   const fresh = (await getProducts(accountId, [p.productId]))[0];
   const base = fresh ? buildVideoPrompt(fresh, p.options, p.format, p.duration) : null;
   const prompt = (base && p.prompt === buildVideoPrompt(p.product, p.options, p.format, p.duration) ? base : p.prompt)
     + (adjustments ? `\n\nAjustes solicitados na avaliação anterior:\n${adjustments}` : '');
   const out = await createProjects(accountId, userId, {
-    providerId: p.providerId, model: p.model, format: p.format, duration: p.duration, options: p.options,
+    providerId, model: p.model, format: p.format, duration: p.duration, options: p.options,
     items: [{ productId: p.productId, prompt: prompt.slice(0, 8000) }],
     requestKey: requestKey ?? `v${p.version + 1}-${p.id}`, parentProjectId: p.id,
   });

@@ -128,6 +128,22 @@ export const MIGRATIONS: Migration[] = [
       CREATE INDEX video_generation_logs_account_idx ON video_generation_logs (account_id, created_at DESC);
     `,
   },
+  {
+    // Vídeos premium com a IA da PLATAFORMA (Google Gemini, custo do operador) além dos vídeos
+    // com a chave do próprio cliente (xAI Grok). Cota mensal de vídeos premium por plano.
+    id: '003_platform_videos',
+    sql: `
+      ALTER TABLE video_projects ADD COLUMN provider_source text NOT NULL DEFAULT 'account'
+        CHECK (provider_source IN ('account', 'platform'));
+      CREATE INDEX video_projects_platform_month_idx ON video_projects (account_id, created_at) WHERE provider_source = 'platform';
+
+      ALTER TABLE plans ADD COLUMN premium_videos_month integer NOT NULL DEFAULT 0 CHECK (premium_videos_month BETWEEN 0 AND 1000);
+      UPDATE plans SET premium_videos_month = CASE id WHEN 'start' THEN 2 WHEN 'pro' THEN 5 WHEN 'escala' THEN 15 ELSE 0 END;
+
+      ALTER TABLE account_overrides ADD COLUMN premium_videos_month integer
+        CHECK (premium_videos_month IS NULL OR premium_videos_month BETWEEN 0 AND 1000);
+    `,
+  },
 ];
 
 const LOCK_ID = 727_001; // advisory lock exclusivo das migrations

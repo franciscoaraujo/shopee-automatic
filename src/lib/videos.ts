@@ -110,6 +110,7 @@ export type ModelCapabilities = {
   imageInput: boolean;          // aceita a foto do produto como referência
   audio: boolean;               // gera áudio/voz
   notes: string[];              // limitações a mostrar na tela
+  usdPerSecond?: number;        // preço oficial por segundo (para estimar o custo)
 };
 
 export type ProviderCapabilities = {

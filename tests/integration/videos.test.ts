@@ -19,6 +19,8 @@ process.env.APP_MASTER_KEY ??= 'a'.repeat(64);
 process.env.VIDEO_DAILY_LIMIT = '6';
 process.env.VIDEO_MAX_ACTIVE = '3';
 process.env.VIDEO_MAX_ATTEMPTS = '2';
+process.env.PLATFORM_GEMINI_API_KEY = 'chave-da-plataforma-teste';
+process.env.PREMIUM_VIDEOS_TRIAL = '1';
 
 type Mods = {
   db: typeof import('@/server/db');
@@ -68,7 +70,7 @@ suite('Shopee Video Studio (integração)', () => {
     fake.mp4 = makeMp4();
     const { ProviderError } = m.types;
     m.providers.PROVIDERS.testvideo = {
-      type: 'testvideo', label: 'Dublê de teste', docsUrl: '', keyHelp: '',
+      type: 'testvideo', label: 'Dublê de teste', docsUrl: '', keyHelp: '', clientConfigurable: true,
       capabilities: { videoGeneration: true, models: [] },
       create: () => ({
         type: 'testvideo',
@@ -107,7 +109,7 @@ suite('Shopee Video Studio (integração)', () => {
   /* ---------------------------------------------------------------- migrations */
   it('aplica as migrations uma única vez', async () => {
     const ids = (await m.db.q<{ id: string }>('SELECT id FROM schema_migrations ORDER BY id')).map((r) => r.id);
-    expect(ids).toEqual(['001_deliveries_product_fields', '002_video_studio']);
+    expect(ids).toEqual(['001_deliveries_product_fields', '002_video_studio', '003_platform_videos']);
     expect(await m.mig.runMigrations(m.db.pool())).toEqual([]);
   });
 
@@ -126,10 +128,12 @@ suite('Shopee Video Studio (integração)', () => {
   /* ---------------------------------------------------------------- provedores */
   let providerId = '';
   it('guarda a chave criptografada e nunca a devolve na listagem', async () => {
-    await expect(m.repo.createProvider(A, { type: 'gemini', name: '', apiKey: 'curta' })).rejects.toThrow(/inválida|formato/);
+    await expect(m.repo.createProvider(A, { type: 'xai', name: '', apiKey: 'curta' })).rejects.toThrow(/inválida|formato/);
     await expect(m.repo.createProvider(A, { type: 'inexistente', name: '', apiKey: 'x'.repeat(40) })).rejects.toThrow(/inválido/);
-    const key = 'AIza' + 'k'.repeat(35);
-    const gid = await m.repo.createProvider(A, { type: 'gemini', name: 'Meu Gemini', apiKey: key });
+    // Gemini é da plataforma (premium): o cliente não cadastra chave
+    await expect(m.repo.createProvider(A, { type: 'gemini', name: '', apiKey: 'AIza' + 'k'.repeat(35) })).rejects.toThrow(/fornecido pela plataforma/);
+    const key = 'xai-' + 'k'.repeat(35);
+    const gid = await m.repo.createProvider(A, { type: 'xai', name: 'Meu Grok', apiKey: key });
     const row = await m.db.one<{ api_key_encrypted: string; is_default: boolean }>('SELECT api_key_encrypted, is_default FROM ai_providers WHERE id = $1', [gid]);
     expect(row!.api_key_encrypted).not.toContain(key);
     expect(row!.is_default).toBe(true);                                                   // primeiro = padrão
@@ -282,11 +286,44 @@ suite('Shopee Video Studio (integração)', () => {
     expect(del.length).toBe(1);
   });
 
+  it('premium: usa a IA da plataforma, respeita limites de custo e a cota mensal', async () => {
+    (globalThis as { __platformStatus?: unknown }).__platformStatus = { at: Date.now(), ok: true, message: 'Disponível' };
+    const { PLATFORM_PROVIDER_ID, premiumQuota } = await import('@/server/videos/platform');
+    const premium = (key: string, duration = 10) => m.repo.createProjects(B, null, {
+      providerId: PLATFORM_PROVIDER_ID, model: 'gemini-omni-1.2-flash', format: '9:16', duration, options: { ...OPTS },
+      items: [{ productId: '333', prompt: 'Prompt premium do produto 333' }], requestKey: key,
+    });
+    await m.db.q('INSERT INTO account_overrides (account_id, premium_videos_month) VALUES ($1, 2)', [B]);
+    expect(await premiumQuota(B)).toEqual({ limit: 2, used: 0, remaining: 2 });
+
+    await expect(premium(randomUUID(), 12)).rejects.toThrow(/de 3 a 10 segundos/);         // teto de custo do operador
+    const k = randomUUID();
+    const p1 = await premium(k);
+    expect((await premium(k)).created).toBe(0);                                           // idempotente: não gasta cota
+    const p2 = await premium(randomUUID());
+    expect(await premiumQuota(B)).toEqual({ limit: 2, used: 2, remaining: 0 });
+    await expect(premium(randomUUID())).rejects.toThrow(/Cota de vídeos premium do mês: 2 de 2/);
+
+    const v = (await m.repo.getProject(B, p1.ids[0]))!;
+    expect(v).toMatchObject({ source: 'platform', providerId: null, providerType: 'gemini', providerLabel: 'Google Gemini (Premium)' });
+    // nenhuma chave do cliente envolvida
+    expect(await m.db.q('SELECT 1 FROM ai_providers WHERE account_id = $1', [B])).toEqual([]);
+
+    await m.db.q("UPDATE video_projects SET status = 'FAILED' WHERE id = $1", [p2.ids[0]]);  // falha não conta
+    expect((await premiumQuota(B)).remaining).toBe(1);
+
+    await m.db.q('DELETE FROM account_overrides WHERE account_id = $1', [B]);
+    expect((await premiumQuota(B)).limit).toBe(5);                                         // plano Pro (migration 003)
+    await m.db.q("UPDATE accounts SET status = 'trial' WHERE id = $1", [B]);
+    expect((await premiumQuota(B)).limit).toBe(1);                                         // PREMIUM_VIDEOS_TRIAL
+    await m.db.q("UPDATE accounts SET status = 'active' WHERE id = $1", [B]);
+  });
+
   it('painel conta por status e respeita filtros', async () => {
     const d = await m.repo.dashboard(A, { period: 'all' });
     expect(d.kpis.total).toBeGreaterThan(0);
     expect(d.kpis.total).toBe(d.kpis.processing + d.kpis.review + d.kpis.approved + d.kpis.rejected + d.kpis.failed);
-    expect((await m.repo.dashboard(A, { period: 'all', provider: 'gemini' })).kpis.total).toBe(0);
-    expect((await m.repo.dashboard(B, { period: 'all' })).kpis.total).toBe(0);
+    expect((await m.repo.dashboard(A, { period: 'all', provider: 'gemini' })).kpis.total).toBe(0);           // A não usou premium
+    expect((await m.repo.dashboard(B, { period: 'all', provider: 'xai' })).kpis.total).toBe(0);
   });
 });
