@@ -60,7 +60,7 @@ async function Dashboard({ searchParams }: { searchParams: PageProps<'/app/video
         ))}
       </section>
 
-      <div className="grid gap-3 lg:grid-cols-[2fr_1fr]">
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-3 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
         <Card title="Atividades recentes" description="Últimas gerações e mudanças de status no período filtrado"
           action={<LinkButton href="/app/videos/galeria" variant="text" size="md" trailingIcon="arrow_forward">Ver galeria</LinkButton>}>
           {d.recent.length === 0 ? (

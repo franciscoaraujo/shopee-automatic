@@ -27,7 +27,7 @@ const newKey = () => crypto.randomUUID();
 
 function Step({ n, title, children, hint }: { n: number; title: string; children: React.ReactNode; hint?: React.ReactNode }) {
   return (
-    <section className="rounded-xl border border-outline-variant/70 bg-surface-lowest p-6">
+    <section className="min-w-0 rounded-xl border border-outline-variant/70 bg-surface-lowest p-6">
       <h2 className="flex items-center gap-3 text-title-l">
         <span className="grid size-8 shrink-0 place-items-center rounded-full bg-primary text-label-l text-on-primary">{n}</span>{title}
       </h2>
@@ -147,8 +147,9 @@ export function GenerateForm({ providers, needsKey, categories, initial, presele
   }
 
   return (
-    <div className="grid gap-3 lg:grid-cols-[1fr_340px] lg:items-start">
-      <div className="grid gap-3">
+    <div className="grid grid-cols-[minmax(0,1fr)] gap-3 lg:grid-cols-[minmax(0,1fr)_340px] lg:items-start">
+      {/* minmax(0,1fr): sem isso, nomes longos de produto alargam a coluna e empurram o resumo para fora da tela */}
+      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-3">
         <Step n={1} title="Produtos do Histórico de Ofertas" hint={`Selecione até ${MAX_PRODUCTS_PER_REQUEST}. Cada produto gera um vídeo.`}>
           <div className="flex flex-wrap gap-3">
             <label className="relative min-w-56 flex-1">
@@ -349,7 +350,7 @@ export function GenerateForm({ providers, needsKey, categories, initial, presele
         </Step>
       </div>
 
-      <aside className="grid gap-3 lg:sticky lg:top-24">
+      <aside className="grid min-w-0 gap-3 lg:sticky lg:top-24">
         <section className="rounded-xl border border-outline-variant/70 bg-surface-lowest p-6">
           <h2 className="text-title-l">Resumo</h2>
           <dl className="mt-4 space-y-2 text-body-m">

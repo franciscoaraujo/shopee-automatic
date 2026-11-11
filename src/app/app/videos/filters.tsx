@@ -20,14 +20,15 @@ export function FilterBar({ filters }: { filters: FilterDef[] }) {
   };
 
   return (
-    <div className={`flex flex-wrap gap-3 transition-opacity ${pending ? 'opacity-60' : ''}`} role="group" aria-label="Filtros">
+    // Largura fixa nos filtros: um <select> cresce até a opção mais longa (nomes de produto)
+    <div className={`flex min-w-0 flex-wrap gap-3 transition-opacity ${pending ? 'opacity-60' : ''}`} role="group" aria-label="Filtros">
       {filters.map((f) => (
-        <label key={f.name} className="flex min-w-44 flex-1 flex-col gap-1 text-label-m text-on-surface-variant sm:flex-none">
+        <label key={f.name} className="flex w-full min-w-0 flex-col gap-1 text-label-m text-on-surface-variant sm:w-48">
           {f.label}
           <select
             value={sp.get(f.name) ?? ''}
             onChange={(e) => set(f.name, e.target.value)}
-            className="h-10 rounded-xs border border-outline bg-surface-lowest px-3 text-body-m text-on-surface outline-none focus:border-2 focus:border-primary"
+            className="h-10 w-full min-w-0 truncate rounded-xs border border-outline bg-surface-lowest px-3 text-body-m text-on-surface outline-none focus:border-2 focus:border-primary"
           >
             <option value="">{f.allLabel}</option>
             {f.options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
