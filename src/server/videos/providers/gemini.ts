@@ -25,6 +25,7 @@ const omni = (id: string, label: string): ModelCapabilities => ({
   imageInput: true,
   audio: true,
   notes: [
+    'Não disponível no plano gratuito da Gemini API: exige faturamento ativo no projeto da chave (cerca de US$ 0,07 por segundo em 720p).',
     'Gera de 3 a 15 segundos, só nos formatos 9:16 e 16:9 (sem 1:1).',
     'Áudio e voz avaliados oficialmente só em inglês; em português o resultado pode variar.',
     '1080p e 4K são ampliados a partir de 720p e demoram mais.',
@@ -162,8 +163,17 @@ export class GeminiVideoProvider implements VideoGenerationProvider {
           : { state: 'failed', error: 'A geração terminou sem vídeo (o pedido pode ter sido bloqueado pelas políticas de uso).', retryable: false, meta };
       }
       case 'failed': {
-        const msg = errorMessage(res) || 'A Gemini API informou falha na geração.';
-        return { state: 'failed', error: msg, retryable: /rate|quota|exhausted|429|unavailable/i.test(msg), meta };
+        // Interações com falha trazem "errors": [{ code, message }] (fora da documentação; visto na API real)
+        const first = Array.isArray((res as { errors?: unknown }).errors) ? ((res as { errors: { code?: string; message?: string }[] }).errors[0] ?? {}) : {};
+        const code = first.code ?? '';
+        if (code === 'RESOURCE_EXHAUSTED') {
+          return {
+            state: 'failed', retryable: true, meta: { ...meta, code },
+            error: 'Cota da Gemini API esgotada (RESOURCE_EXHAUSTED). O Gemini Omni Flash não está disponível no plano gratuito: ative o faturamento no projeto da chave (AI Studio → Billing) ou aguarde a renovação da cota.',
+          };
+        }
+        const msg = first.message || errorMessage(res) || 'A Gemini API informou falha na geração.';
+        return { state: 'failed', error: code ? `${msg} (${code})` : msg, retryable: /rate|quota|exhausted|429|unavailable/i.test(`${code} ${msg}`), meta: { ...meta, code: code || null } };
       }
       case 'cancelled':
         return { state: 'failed', error: 'A geração foi cancelada no provedor.', retryable: false, meta };

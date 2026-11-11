@@ -12,7 +12,8 @@ export const PROVIDERS: Record<string, ProviderDefinition> = {
     label: 'Google Gemini',
     docsUrl: 'https://aistudio.google.com/docs/omni',
     keyHelp: 'Crie a chave em aistudio.google.com → Get API key. A geração de vídeo exige um projeto com faturamento ativo.',
-    keyPattern: /^[A-Za-z0-9_-]{30,60}$/,
+    // Formatos aceitos: clássico "AIza…" e o novo "AQ.…" (com ponto)
+    keyPattern: /^[A-Za-z0-9._-]{30,200}$/,
     capabilities: GEMINI_CAPABILITIES,
     create: (cfg) => new GeminiVideoProvider(cfg),
   },

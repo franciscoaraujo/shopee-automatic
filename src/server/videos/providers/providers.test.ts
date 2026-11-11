@@ -99,6 +99,14 @@ describe('GeminiVideoProvider', () => {
     expect(await p.getGenerationStatus('i')).toMatchObject({ state: 'failed', retryable: false });
   });
 
+  it('explica a falha por cota (formato real da API: campo "errors")', async () => {
+    const real = { id: 'i', status: 'failed', object: 'interaction', errors: [{ message: 'There was a problem processing your request. You will only be charged for tokens successfully generated.', code: 'RESOURCE_EXHAUSTED' }] };
+    const other = { id: 'i', status: 'failed', errors: [{ message: 'Something else', code: 'INTERNAL' }] };
+    const p = new GeminiVideoProvider({ apiKey: KEY_G, settings: {} }, fakeFetch([json(real), json(other)]).fn);
+    expect(await p.getGenerationStatus('i')).toMatchObject({ state: 'failed', retryable: true, error: expect.stringMatching(/plano gratuito.*faturamento/) });
+    expect(await p.getGenerationStatus('i')).toMatchObject({ state: 'failed', error: 'Something else (INTERNAL)' });
+  });
+
   it('429 e 5xx são temporários; 400 não', async () => {
     const p429 = new GeminiVideoProvider({ apiKey: KEY_G, settings: {} }, fakeFetch([json({}, 429)]).fn);
     await expect(p429.generateVideo(req)).rejects.toMatchObject({ retryable: true, status: 429 });
@@ -167,6 +175,15 @@ describe('GrokVideoProvider', () => {
     const { fn } = fakeFetch([new Response(Buffer.alloc(2000))]);
     await expect(new GrokVideoProvider({ apiKey: KEY_X, settings: {} }, fn).downloadResult({ kind: 'url', url: 'https://vidgen.x.ai/v.mp4', authenticated: false }, 1000))
       .rejects.toBeInstanceOf(ProviderError);
+  });
+});
+
+describe('formato das chaves', () => {
+  it('aceita a chave clássica (AIza…) e a nova (AQ.…) do Google', async () => {
+    const { PROVIDERS } = await import('./index');
+    expect(PROVIDERS.gemini.keyPattern!.test(KEY_G)).toBe(true);
+    expect(PROVIDERS.gemini.keyPattern!.test('AQ.Ab8RN6Ik1xYlJKBicuB2ybE7cP7DNyb4ojmGbDHYTESTE')).toBe(true);
+    expect(PROVIDERS.gemini.keyPattern!.test('chave com espaço e muito longa ......')).toBe(false);
   });
 });
 
