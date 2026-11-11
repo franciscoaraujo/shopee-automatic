@@ -1,188 +1,158 @@
-name: shopee-automatic
+name: autoachados
 
-# Esteira autônoma de ofertas Shopee Afiliados -> Telegram + WhatsApp
-# Serviços: n8n (orquestração) | Evolution API v2 (WhatsApp) | PostgreSQL 15 | Redis 7
-# O .env guarda apenas segredos de infraestrutura (necessários para os containers
-# iniciarem). Credenciais da Shopee, Telegram e WhatsApp são configuradas no painel
-# (http://localhost:3100 -> Configurações) e ficam criptografadas no banco.
+# SaaS AutoAchados — site + painel dos clientes + admin (web), worker da esteira,
+# PostgreSQL, Redis e Evolution API (WhatsApp, uma instância por cliente).
+#
+#   cp .env.example .env   (preencha)
+#   docker compose up -d --build                 # local: http://localhost:3000
+#   docker compose --profile https up -d --build # servidor com domínio: HTTPS automático (Caddy)
+
+x-app-env: &app-env
+  NODE_ENV: production
+  DATABASE_URL: postgres://${POSTGRES_USER:-autoachados}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-autoachados}
+  APP_MASTER_KEY: ${APP_MASTER_KEY}
+  ADMIN_PASSWORD: ${ADMIN_PASSWORD}
+  ADMIN_SESSION_SECRET: ${ADMIN_SESSION_SECRET:-}
+  COOKIE_SECURE: ${COOKIE_SECURE:-true}
+  EVOLUTION_API_URL: http://evolution:8080
+  EVOLUTION_API_KEY: ${EVOLUTION_API_KEY}
+  # E-mail (confirmação de cadastro e recuperação de senha)
+  APP_URL: ${NEXT_PUBLIC_SITE_URL:-http://localhost:3000}
+  SMTP_HOST: ${SMTP_HOST:-}
+  SMTP_PORT: ${SMTP_PORT:-587}
+  SMTP_SECURE: ${SMTP_SECURE:-false}
+  SMTP_USER: ${SMTP_USER:-}
+  SMTP_PASS: ${SMTP_PASS:-}
+  MAIL_FROM: ${MAIL_FROM:-AutoAchados <nao-responda@seudominio.com.br>}
+  TZ: America/Sao_Paulo
+
+x-build: &build
+  context: .
+  args:
+    NEXT_PUBLIC_SITE_URL: ${NEXT_PUBLIC_SITE_URL:-http://localhost:3000}
+    NEXT_PUBLIC_WHATSAPP: ${NEXT_PUBLIC_WHATSAPP:-5500000000000}
+    NEXT_PUBLIC_CONTACT_EMAIL: ${NEXT_PUBLIC_CONTACT_EMAIL:-contato@seudominio.com.br}
 
 services:
-  n8n:
-    image: n8nio/n8n:latest
-    container_name: n8n
+  web:
+    build: *build
+    image: autoachados/platform:latest
     restart: unless-stopped
+    environment: *app-env
     ports:
-      - "${N8N_HOST_PORT:-5678}:5678"
-    environment:
-      - TZ=${TZ:-America/Sao_Paulo}
-      - GENERIC_TIMEZONE=${TZ:-America/Sao_Paulo}
-      - N8N_HOST=${N8N_HOST:-localhost}
-      - N8N_PORT=5678
-      - N8N_PROTOCOL=${N8N_PROTOCOL:-http}
-      - WEBHOOK_URL=${N8N_WEBHOOK_URL:-http://localhost:5678/}
-      - N8N_ENCRYPTION_KEY=${N8N_ENCRYPTION_KEY}
-      - N8N_SECURE_COOKIE=false
-      - N8N_ENFORCE_SETTINGS_FILE_PERMISSIONS=true
-      # Code Node: libera o módulo nativo crypto (assinatura SHA256 da Shopee)
-      - NODE_FUNCTION_ALLOW_BUILTIN=crypto
-      # Permite que o workflow leia DASHBOARD_* via {{ $env.* }}
-      - N8N_BLOCK_ENV_ACCESS_IN_NODE=false
-      - N8N_RUNNERS_ENABLED=true
-      # O nó "Config" busca as credenciais no painel a cada execução
-      - DASHBOARD_INTERNAL_URL=http://dashboard:3100
-      - DASHBOARD_INGEST_TOKEN=${DASHBOARD_INGEST_TOKEN}
-    volumes:
-      - n8n_data:/home/node/.n8n
-    networks:
-      - automation
+      - "${WEB_HOST_BIND:-127.0.0.1}:${WEB_HOST_PORT:-3000}:3000"
     depends_on:
-      - evolution-api
-      - dashboard
+      postgres: { condition: service_healthy }
 
-  evolution-api:
-    image: evoapicloud/evolution-api:v2.3.7
-    container_name: evolution-api
+  worker:
+    image: autoachados/platform:latest
     restart: unless-stopped
-    ports:
-      - "${EVOLUTION_HOST_PORT:-8080}:8080"
+    command: ["node", "dist/worker.mjs"]
     environment:
-      - SERVER_TYPE=http
-      - SERVER_PORT=8080
-      - SERVER_URL=${EVOLUTION_SERVER_URL:-http://localhost:8080}
-      - LANGUAGE=pt-BR
-      # Autenticação global por apikey (header "apikey")
-      - AUTHENTICATION_API_KEY=${EVOLUTION_API_KEY}
-      - AUTHENTICATION_EXPOSE_IN_FETCH_INSTANCES=true
-      - DEL_INSTANCE=false
-      # Banco de dados
-      - DATABASE_ENABLED=true
-      - DATABASE_PROVIDER=postgresql
-      - DATABASE_CONNECTION_URI=postgresql://${POSTGRES_USER:-evolution}:${POSTGRES_PASSWORD}@postgres:5432/${POSTGRES_DB:-evolution}?schema=public
-      - DATABASE_CONNECTION_CLIENT_NAME=evolution_exchange
-      - DATABASE_SAVE_DATA_INSTANCE=true
-      - DATABASE_SAVE_DATA_NEW_MESSAGE=true
-      - DATABASE_SAVE_MESSAGE_UPDATE=true
-      - DATABASE_SAVE_DATA_CONTACTS=true
-      - DATABASE_SAVE_DATA_CHATS=true
-      - DATABASE_SAVE_DATA_LABELS=true
-      - DATABASE_SAVE_DATA_HISTORIC=true
-      # Cache Redis
-      - CACHE_REDIS_ENABLED=true
-      - CACHE_REDIS_URI=redis://redis:6379/6
-      - CACHE_REDIS_PREFIX_KEY=evolution
-      - CACHE_REDIS_SAVE_INSTANCES=false
-      - CACHE_LOCAL_ENABLED=false
-      # QR Code
-      - QRCODE_LIMIT=30
-      - QRCODE_COLOR=#175197
-      # Versão do WhatsApp Web anunciada. Vazio = detectada automaticamente (recomendado).
-      # Só defina WA_WEB_VERSION se o QR Code não for gerado ({"count":0}).
-      - CONFIG_SESSION_PHONE_CLIENT=Shopee Bot
-      - CONFIG_SESSION_PHONE_NAME=Chrome
-      - CONFIG_SESSION_PHONE_VERSION=${WA_WEB_VERSION:-}
-      - LOG_LEVEL=ERROR,WARN,INFO
-      - LOG_COLOR=true
-      - LOG_BAILEYS=error
+      <<: *app-env
+      WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-4}
+    healthcheck:
+      disable: true
+    depends_on:
+      web: { condition: service_started }
+      postgres: { condition: service_healthy }
+      evolution: { condition: service_started }
+
+  evolution:
+    image: evoapicloud/evolution-api:v2.3.7
+    restart: unless-stopped
+    environment:
+      SERVER_TYPE: http
+      SERVER_PORT: 8080
+      SERVER_URL: http://evolution:8080
+      AUTHENTICATION_API_KEY: ${EVOLUTION_API_KEY}
+      AUTHENTICATION_EXPOSE_IN_FETCH_INSTANCES: "false"
+      DEL_INSTANCE: "false"
+      DATABASE_ENABLED: "true"
+      DATABASE_PROVIDER: postgresql
+      DATABASE_CONNECTION_URI: postgresql://${POSTGRES_USER:-autoachados}:${POSTGRES_PASSWORD}@postgres:5432/evolution?schema=public
+      DATABASE_CONNECTION_CLIENT_NAME: autoachados
+      DATABASE_SAVE_DATA_INSTANCE: "true"
+      DATABASE_SAVE_DATA_NEW_MESSAGE: "false"
+      DATABASE_SAVE_MESSAGE_UPDATE: "false"
+      DATABASE_SAVE_DATA_CONTACTS: "false"
+      DATABASE_SAVE_DATA_CHATS: "false"
+      DATABASE_SAVE_DATA_LABELS: "false"
+      DATABASE_SAVE_DATA_HISTORIC: "false"
+      CACHE_REDIS_ENABLED: "true"
+      CACHE_REDIS_URI: redis://redis:6379/6
+      CACHE_REDIS_PREFIX_KEY: evolution
+      CACHE_REDIS_SAVE_INSTANCES: "false"
+      CACHE_LOCAL_ENABLED: "false"
+      QRCODE_LIMIT: 30
+      CONFIG_SESSION_PHONE_CLIENT: AutoAchados
+      CONFIG_SESSION_PHONE_NAME: Chrome
+      LOG_LEVEL: ERROR,WARN
+      LOG_BAILEYS: error
     volumes:
       - evolution_instances:/evolution/instances
-    networks:
-      - automation
     depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
+      postgres: { condition: service_healthy }
+      redis: { condition: service_healthy }
 
   postgres:
     image: postgres:15
-    container_name: evolution-postgres
     restart: unless-stopped
     environment:
-      - POSTGRES_USER=${POSTGRES_USER:-evolution}
-      - POSTGRES_PASSWORD=${POSTGRES_PASSWORD}
-      - POSTGRES_DB=${POSTGRES_DB:-evolution}
+      POSTGRES_USER: ${POSTGRES_USER:-autoachados}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB:-autoachados}
     volumes:
       - postgres_data:/var/lib/postgresql/data
-    networks:
-      - automation
+      - ./docker/init-db.sql:/docker-entrypoint-initdb.d/10-evolution.sql:ro
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-evolution} -d ${POSTGRES_DB:-evolution}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-autoachados} -d ${POSTGRES_DB:-autoachados}"]
       interval: 10s
       timeout: 5s
-      retries: 5
+      retries: 10
 
   redis:
     image: redis:7-alpine
-    container_name: evolution-redis
     restart: unless-stopped
-    command: ["redis-server", "--appendonly", "yes", "--port", "6379"]
+    command: ["redis-server", "--appendonly", "yes"]
     volumes:
       - redis_data:/data
-    networks:
-      - automation
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 10s
       timeout: 5s
       retries: 5
 
-  # Painel: observabilidade + configurações (credenciais criptografadas)
-  dashboard:
-    build: ./dashboard
-    image: shopee-automatic/dashboard:latest
-    container_name: obs-dashboard
+  # Caixa de e-mails de DESENVOLVIMENTO: captura tudo, não envia a ninguém.
+  # Ative com COMPOSE_PROFILES=mail-dev no .env e SMTP_HOST=mailpit / SMTP_PORT=1025.
+  # Caixa de entrada: http://localhost:8025
+  mailpit:
+    image: axllent/mailpit:latest
+    profiles: ["mail-dev"]
     restart: unless-stopped
     ports:
-      - "${DASHBOARD_HOST_PORT:-3100}:3100"
-    environment:
-      - TZ=${TZ:-America/Sao_Paulo}
-      - PORT=3100
-      # Token interno n8n <-> painel (ingestão de eventos e leitura da configuração)
-      - DASHBOARD_INGEST_TOKEN=${DASHBOARD_INGEST_TOKEN}
-      # Chave mestra AES-256 (opcional). Vazia = gerada e guardada no volume dashboard_data
-      - CONFIG_MASTER_KEY=${CONFIG_MASTER_KEY:-}
-      - DATA_DIR=/data
-      # true quando o painel estiver atrás de HTTPS
-      - COOKIE_SECURE=${COOKIE_SECURE:-false}
-      # Usa o mesmo Postgres; cria o banco "observability" automaticamente
-      - PGHOST=postgres
-      - PGPORT=5432
-      - PGUSER=${POSTGRES_USER:-evolution}
-      - PGPASSWORD=${POSTGRES_PASSWORD}
-      - OBS_DATABASE=observability
-      - REDIS_HOST=redis
-      - REDIS_PORT=6379
-      # Verificações de saúde
-      - N8N_INTERNAL_URL=http://n8n:5678
-      - N8N_API_KEY=${N8N_API_KEY:-}
-      - N8N_WORKFLOW_ID=${N8N_WORKFLOW_ID:-}
-      - EVOLUTION_API_URL=http://evolution-api:8080
-      - EVOLUTION_API_KEY=${EVOLUTION_API_KEY}
-      - SHOPEE_STALE_MINUTES=${SHOPEE_STALE_MINUTES:-90}
-      # Legado (opcional): usados só se o campo não tiver sido salvo no painel
-      - SHOPEE_APP_ID=${SHOPEE_APP_ID:-}
-      - SHOPEE_SECRET=${SHOPEE_SECRET:-}
-      - TELEGRAM_BOT_TOKEN=${TELEGRAM_BOT_TOKEN:-}
-      - TELEGRAM_CHAT_ID=${TELEGRAM_CHAT_ID:-}
-      - EVOLUTION_INSTANCE=${EVOLUTION_INSTANCE:-}
-      - WHATSAPP_GROUP_JID=${WHATSAPP_GROUP_JID:-}
-    volumes:
-      - dashboard_data:/data
-    networks:
-      - automation
-    depends_on:
-      postgres:
-        condition: service_healthy
-      redis:
-        condition: service_healthy
+      - "127.0.0.1:8025:8025"
 
-networks:
-  automation:
-    driver: bridge
+  # HTTPS automático — só sobe com: docker compose --profile https up -d
+  caddy:
+    image: caddy:2-alpine
+    profiles: ["https"]
+    restart: unless-stopped
+    environment:
+      DOMAIN: ${DOMAIN}
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./docker/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    depends_on:
+      - web
 
 volumes:
-  n8n_data:
-  evolution_instances:
   postgres_data:
   redis_data:
-  dashboard_data:
+  evolution_instances:
+  caddy_data:
+  caddy_config:

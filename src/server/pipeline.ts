@@ -1,6 +1,6 @@
 // Uma rodada da esteira para UMA conta:
 // busca → filtra → gera links → formata → publica → registra.
-// Porta a lógica dos Code Nodes do n8n (n8n/code-nodes/*.js) para o modelo multi-tenant.
+// Porta a lógica dos Code Nodes do n8n (versão n8n removida; ver commit 8dfacda) para o modelo multi-tenant.
 import { effectiveInterval } from '@/lib/plans';
 import { effectivePlan } from './plans';
 import { effectiveSchedule, isWithin, nextOpening } from '@/lib/schedule';
