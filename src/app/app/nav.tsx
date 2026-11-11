@@ -6,6 +6,7 @@ import { Icon, type IconName } from '@/components/icons';
 
 const ITEMS: { href: string; label: string; icon: IconName }[] = [
   { href: '/app', label: 'Painel', icon: 'monitoring' },
+  { href: '/app/videos', label: 'Vídeos', icon: 'movie' },
   { href: '/app/configuracoes', label: 'Configurar', icon: 'tune' },
   { href: '/app/conta', label: 'Conta', icon: 'person' },
 ];
@@ -31,7 +32,7 @@ export function AppNav({ attention }: { attention?: boolean }) {
           );
         })}
       </nav>
-      <nav aria-label="Principal" className="fixed inset-x-0 bottom-0 z-20 grid h-20 grid-cols-3 border-t border-outline-variant/60 bg-surface-container lg:hidden">
+      <nav aria-label="Principal" className="fixed inset-x-0 bottom-0 z-20 grid h-20 grid-cols-4 border-t border-outline-variant/60 bg-surface-container lg:hidden">
         {ITEMS.map((it) => {
           const on = isActive(path, it.href);
           return (

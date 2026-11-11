@@ -1,6 +1,6 @@
 // Criptografia das credenciais dos clientes: AES-256-GCM.
 // O AAD amarra cada valor à conta e ao campo — um segredo copiado para outra conta não descriptografa.
-import { createCipheriv, createDecipheriv, randomBytes } from 'node:crypto';
+import { createCipheriv, createDecipheriv, hkdfSync, randomBytes } from 'node:crypto';
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 
@@ -27,6 +27,11 @@ function masterKey(): Buffer {
     writeFileSync(file, key.toString('hex'), { mode: 0o600 });
   }
   return key;
+}
+
+// Chave derivada para outro fim (ex.: assinar URLs), sem expor a chave mestra.
+export function deriveKey(purpose: string): Buffer {
+  return Buffer.from(hkdfSync('sha256', masterKey(), Buffer.alloc(0), `autoachados:${purpose}`, 32));
 }
 
 export function encrypt(plain: string, aad: string): string {

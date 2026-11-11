@@ -7,11 +7,18 @@
     "build": "next build && npm run worker:build",
     "start": "next start",
     "lint": "eslint",
-    "worker:build": "esbuild src/worker/index.ts --bundle --platform=node --target=node22 --format=esm --outfile=dist/worker.mjs --packages=external --tsconfig=tsconfig.json --log-level=warning",
+    "test": "node scripts/vitest.mjs run --project unit",
+    "test:integration": "node scripts/vitest.mjs run --project integration",
+    "test:integration:docker": "docker compose -p autoachados-test -f docker-compose.test.yml run --rm tests",
+    "test:integration:clean": "docker compose -p autoachados-test -f docker-compose.test.yml down -v",
+    "worker:build": "esbuild src/worker/index.ts --bundle --platform=node --target=node22 --format=esm --outfile=dist/worker.mjs --packages=external --tsconfig=tsconfig.json --log-level=warning && esbuild src/worker/videos.ts --bundle --platform=node --target=node22 --format=esm --outfile=dist/video-worker.mjs --packages=external --tsconfig=tsconfig.json --log-level=warning",
     "worker": "node dist/worker.mjs",
-    "worker:dev": "npm run worker:build && node --env-file-if-exists=.env.local dist/worker.mjs"
+    "worker:dev": "npm run worker:build && node --env-file-if-exists=.env.local dist/worker.mjs",
+    "video-worker": "node dist/video-worker.mjs",
+    "video-worker:dev": "npm run worker:build && node --env-file-if-exists=.env.local dist/video-worker.mjs"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1166.0",
     "next": "16.4.6",
     "nodemailer": "^10.5.0",
     "pg": "^8.23.1",
@@ -32,6 +39,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.4.6",
     "tailwindcss": "4.3.3",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vitest": "^4.1.12"
   }
 }

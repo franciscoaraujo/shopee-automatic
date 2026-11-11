@@ -8,6 +8,7 @@ const NAMES = [
   'groups', 'rocket_launch', 'cloud', 'computer', 'support_agent', 'verified_user', 'close', 'menu', 'error',
   'info', 'download', 'logout', 'filter_alt', 'trending_up', 'mobile', 'dns', 'history', 'percent',
   'sync', 'chat', 'east', 'remove', 'add', 'block', 'forum', 'person', 'mail', 'call', 'arrow_back', 'headphones', 'coffee_maker', 'watch', 'speaker', 'done_all', 'more_vert', 'qr_code_2', 'link_off', 'refresh', 'warning', 'play_arrow', 'open_in_new', 'visibility', 'visibility_off', 'pause_circle', 'cancel', 'key', 'table_view', 'bar_chart', 'dashboard', 'settings', 'cancel-fill', 'error-fill', 'warning-fill', 'pause_circle-fill', 'help',
+  'movie', 'smart_display', 'thumb_up', 'thumb_down', 'delete', 'autorenew', 'star', 'image', 'hourglass_top', 'video_library', 'content_copy', 'edit', 'category', 'rate_review', 'add_circle',
 ];
 const dir = 'node_modules/@material-symbols/svg-400/rounded';
 const entries = NAMES.map((n) => {

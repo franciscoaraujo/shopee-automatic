@@ -25,6 +25,16 @@ x-app-env: &app-env
   SMTP_PASS: ${SMTP_PASS:-}
   MAIL_FROM: ${MAIL_FROM:-AutoAchados <nao-responda@seudominio.com.br>}
   TZ: America/Sao_Paulo
+  # Vídeos (Shopee Video Studio): armazenamento compatível com S3. Por padrão, o serviço
+  # "storage" abaixo; para AWS S3/R2/MinIO próprio, troque S3_ENDPOINT e as credenciais.
+  S3_ENDPOINT: ${S3_ENDPOINT:-http://storage:8333}
+  S3_REGION: ${S3_REGION:-us-east-1}
+  S3_BUCKET: ${S3_BUCKET:-autoachados-videos}
+  S3_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-}
+  S3_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-}
+  S3_FORCE_PATH_STYLE: ${S3_FORCE_PATH_STYLE:-true}
+  VIDEO_DAILY_LIMIT: ${VIDEO_DAILY_LIMIT:-20}
+  VIDEO_MAX_ACTIVE: ${VIDEO_MAX_ACTIVE:-5}
 
 x-build: &build
   context: .
@@ -61,6 +71,42 @@ services:
       web: { condition: service_started }
       postgres: { condition: service_healthy }
       evolution: { condition: service_started }
+
+  # Fila de vídeos (gera, baixa, valida e armazena). Separado do worker de ofertas:
+  # pode ficar ligado mesmo onde o worker de ofertas está desligado.
+  video-worker:
+    image: autoachados/platform:${IMAGE_TAG:-latest}
+    pull_policy: never
+    restart: unless-stopped
+    command: ["node", "dist/video-worker.mjs"]
+    deploy:
+      replicas: ${VIDEO_WORKER_REPLICAS:-1}
+    environment:
+      <<: *app-env
+      VIDEO_WORKER_CONCURRENCY: ${VIDEO_WORKER_CONCURRENCY:-3}
+    healthcheck:
+      disable: true
+    depends_on:
+      web: { condition: service_started }
+      postgres: { condition: service_healthy }
+      storage: { condition: service_healthy }
+
+  # Armazenamento de objetos compatível com S3 (SeaweedFS, Apache-2.0). Sem porta no host:
+  # os arquivos são privados e entregues pelo site com URL assinada.
+  storage:
+    image: chrislusf/seaweedfs:4.53
+    restart: unless-stopped
+    command: ["server", "-dir=/data", "-s3", "-s3.port=8333", "-ip.bind=0.0.0.0"]
+    environment:
+      AWS_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-}
+      AWS_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-}
+    volumes:
+      - storage_data:/data
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8333/healthz || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 12
 
   evolution:
     image: evoapicloud/evolution-api:v2.3.7
@@ -160,3 +206,4 @@ volumes:
   evolution_instances:
   caddy_data:
   caddy_config:
+  storage_data:

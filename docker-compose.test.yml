@@ -1,0 +1,55 @@
+# Testes de integração do Shopee Video Studio: Postgres, S3 (SeaweedFS) e ffmpeg reais,
+# isolados de qualquer outra instância (banco e armazenamento descartáveis).
+#
+#   npm run test:integration:docker     (= docker compose -p autoachados-test -f docker-compose.test.yml run --rm tests)
+#   npm run test:integration:clean      (remove containers e volumes de teste)
+#
+# Use SEMPRE -p autoachados-test: sem ele, o COMPOSE_PROJECT_NAME do .env (ex.: autoachados-dev)
+# colocaria estes containers dentro do projeto de outra instância.
+name: autoachados-test
+
+services:
+  test-db:
+    image: postgres:15
+    environment:
+      POSTGRES_USER: test
+      POSTGRES_PASSWORD: test
+      POSTGRES_DB: autoachados_test
+    tmpfs: [/var/lib/postgresql/data]
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U test -d autoachados_test"]
+      interval: 2s
+      retries: 30
+
+  test-storage:
+    image: chrislusf/seaweedfs:4.53
+    command: ["server", "-dir=/data", "-s3", "-s3.port=8333", "-ip.bind=0.0.0.0"]
+    environment:
+      AWS_ACCESS_KEY_ID: testkey
+      AWS_SECRET_ACCESS_KEY: testsecret-0123456789
+    tmpfs: [/data]
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O /dev/null http://127.0.0.1:8333/healthz || exit 1"]
+      interval: 2s
+      retries: 30
+
+  tests:
+    image: node:22-alpine
+    working_dir: /app
+    command: ["sh", "-c", "apk add --no-cache ffmpeg >/dev/null && npm ci --no-audit --no-fund --loglevel=error && npx vitest run --project integration"]
+    environment:
+      TEST_DATABASE_URL: postgres://test:test@test-db:5432/autoachados_test
+      APP_MASTER_KEY: "0000000000000000000000000000000000000000000000000000000000000001"
+      S3_ENDPOINT: http://test-storage:8333
+      S3_BUCKET: autoachados-test
+      S3_ACCESS_KEY_ID: testkey
+      S3_SECRET_ACCESS_KEY: testsecret-0123456789
+    volumes:
+      - .:/app
+      - test_node_modules:/app/node_modules   # dependências Linux, separadas das do Windows
+    depends_on:
+      test-db: { condition: service_healthy }
+      test-storage: { condition: service_healthy }
+
+volumes:
+  test_node_modules:

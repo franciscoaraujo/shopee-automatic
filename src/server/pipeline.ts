@@ -26,6 +26,7 @@ const directImage = (img: string) => (/^https?:\/\//i.test(img) ? img.replace(/^
 export type Selected = {
   itemId: string; productName: string; originUrl: string; imageUrl: string; price: number; discount: number;
   commissionRate: number; commission: number; sales: number; rating: number;
+  productLink?: string | null; shopName?: string | null;
 };
 
 export function formatCaptions(p: Selected, link: string) {
@@ -74,6 +75,8 @@ export function selectOffers(nodes: Offer[], s: Settings, maxPosts: number, alre
       commission: parseFloat(p.commission) || 0,
       sales: Number(p.sales) || 0,
       rating: parseFloat(p.ratingStar) || 0,
+      productLink: p.productLink || null,
+      shopName: p.shopName || null,
     }));
 }
 
@@ -162,9 +165,10 @@ export async function runAccount(account: Account, trigger: 'schedule' | 'manual
 
     const record = (channel: string, ok: boolean, error: string | null, messageId: string | null) =>
       q(
-        `INSERT INTO deliveries (account_id, run_id, channel, item_id, product_name, price, commission_rate, commission, affiliate_link, image_url, success, error, message_id)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
-        [account.id, runId, channel, p.itemId, p.productName, p.price, p.commissionRate, p.commission, link, p.imageUrl, ok, error, messageId]
+        `INSERT INTO deliveries (account_id, run_id, channel, item_id, product_name, price, commission_rate, commission, affiliate_link, image_url, success, error, message_id, discount_rate, product_link, shop_name)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
+        [account.id, runId, channel, p.itemId, p.productName, p.price, p.commissionRate, p.commission, link, p.imageUrl, ok, error, messageId,
+         p.discount || null, p.productLink ?? null, p.shopName ?? null]
       );
 
     if (useWa) {

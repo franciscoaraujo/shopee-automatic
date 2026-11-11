@@ -22,6 +22,10 @@ Shopee → WhatsApp/Telegram **para cada cliente**. Multi-tenant: um servidor at
                                         Telegram Bot API (bot do próprio cliente)
 ```
 
+**Vídeos com IA:** o módulo **Shopee Video Studio** (`/app/videos`) gera, armazena e avalia
+vídeos dos produtos do histórico com Google Gemini ou xAI Grok, sem publicar nada. Arquitetura,
+configuração dos provedores, variáveis e testes: [docs/VIDEO-STUDIO.md](docs/VIDEO-STUDIO.md).
+
 ## Como cada parte funciona
 
 | Peça | Onde | Detalhes |

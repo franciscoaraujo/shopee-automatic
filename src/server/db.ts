@@ -2,6 +2,7 @@
 // Usado pelo app web e pelo worker.
 import { Pool, type QueryResultRow } from 'pg';
 import { DEFAULT_PLANS } from '@/lib/plans';
+import { runMigrations } from './migrations';
 
 const g = globalThis as unknown as { __pool?: Pool; __migrated?: Promise<void> };
 
@@ -205,6 +206,7 @@ export function migrate(): Promise<void> {
   g.__migrated ??= pool()
     .query(SCHEMA)
     .then(seedPlans)
+    .then(() => runMigrations(pool()))
     .then(() => undefined)
     .catch((err) => {
       g.__migrated = undefined; // tenta de novo na próxima chamada
