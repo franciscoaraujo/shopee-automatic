@@ -83,6 +83,41 @@ npm run worker:dev              # worker (outro terminal)
 
 Sem `APP_MASTER_KEY` em desenvolvimento, uma chave é gerada em `.data/master.key`.
 
+### Ambiente local: estável (3000) e teste (3001)
+
+Duas instâncias Docker lado a lado, cada uma com containers, volumes e banco próprios:
+
+| | Estável | Teste |
+|---|---|---|
+| Endereço | http://localhost:3000 | http://localhost:3001 |
+| Código | branch `master`, pasta `../shopee-automatic-master` (git worktree) | branch `develop`, esta pasta |
+| Projeto Docker | `autoachados` | `autoachados-dev` |
+| Banco | o real | cópia do real |
+| Worker | ligado | desligado (`WORKER_REPLICAS=0`) |
+| E-mails (Mailpit) | http://localhost:8025 | http://localhost:8026 |
+
+O `.env` desta pasta define `COMPOSE_PROJECT_NAME=autoachados-dev`, `IMAGE_TAG=dev`, `WEB_HOST_PORT=3001`,
+`MAILPIT_HOST_PORT=8026` e `WORKER_REPLICAS=0`; o `.env` da pasta da master usa os valores padrão.
+Os dois precisam do **mesmo `APP_MASTER_KEY`**, senão a cópia do banco não consegue ler as credenciais.
+
+```bash
+# Testar uma mudança (porta 3001)
+docker compose up -d --build
+
+# Atualizar a estável depois do merge na master (porta 3000)
+git -C ../shopee-automatic-master merge --ff-only hml
+cd ../shopee-automatic-master && docker compose up -d --build
+
+# Recopiar o banco real para o teste
+docker compose up -d --wait postgres
+docker compose -p autoachados exec -T postgres pg_dump -U autoachados -d autoachados --no-owner --clean --if-exists \
+  | docker compose exec -T postgres psql -q -U autoachados -d autoachados
+```
+
+O worker de teste fica desligado porque a cópia tem as credenciais reais: ligado, ele publicaria
+ofertas de verdade nos grupos, em dobro com a estável. Para testar a esteira, use `WORKER_REPLICAS=1`
+com um grupo de teste, e volte para `0` depois.
+
 ## Personalizar
 
 - **Preços, limites, textos dos planos e promoções:** tabelas `plans` e `promotions` no banco (pelo painel administrativo). `DEFAULT_PLANS` em `src/lib/plans.ts` só vale para um banco novo.

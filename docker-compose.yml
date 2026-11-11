@@ -36,7 +36,7 @@ x-build: &build
 services:
   web:
     build: *build
-    image: autoachados/platform:latest
+    image: autoachados/platform:${IMAGE_TAG:-latest}
     restart: unless-stopped
     environment: *app-env
     ports:
@@ -45,9 +45,13 @@ services:
       postgres: { condition: service_healthy }
 
   worker:
-    image: autoachados/platform:latest
+    image: autoachados/platform:${IMAGE_TAG:-latest}
+    pull_policy: never # mesma imagem do web, construída localmente
     restart: unless-stopped
     command: ["node", "dist/worker.mjs"]
+    # WORKER_REPLICAS=0 desliga o worker (ex.: instância de teste com cópia do banco)
+    deploy:
+      replicas: ${WORKER_REPLICAS:-1}
     environment:
       <<: *app-env
       WORKER_CONCURRENCY: ${WORKER_CONCURRENCY:-4}
@@ -125,13 +129,13 @@ services:
 
   # Caixa de e-mails de DESENVOLVIMENTO: captura tudo, não envia a ninguém.
   # Ative com COMPOSE_PROFILES=mail-dev no .env e SMTP_HOST=mailpit / SMTP_PORT=1025.
-  # Caixa de entrada: http://localhost:8025
+  # Caixa de entrada: http://localhost:8025 (porta: MAILPIT_HOST_PORT)
   mailpit:
     image: axllent/mailpit:latest
     profiles: ["mail-dev"]
     restart: unless-stopped
     ports:
-      - "127.0.0.1:8025:8025"
+      - "127.0.0.1:${MAILPIT_HOST_PORT:-8025}:8025"
 
   # HTTPS automático — só sobe com: docker compose --profile https up -d
   caddy:
