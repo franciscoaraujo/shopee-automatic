@@ -3,7 +3,7 @@ export const site = {
   name: 'AutoAchados',
   url: process.env.NEXT_PUBLIC_SITE_URL || 'http://localhost:3000',
   // WhatsApp de atendimento: DDI + DDD + número, só dígitos (ex.: 5511999998888)
-  whatsapp: process.env.NEXT_PUBLIC_WHATSAPP || '5500000000000',
+  whatsapp: process.env.NEXT_PUBLIC_WHATSAPP || '5511994554739',
   email: process.env.NEXT_PUBLIC_CONTACT_EMAIL || 'contato@seudominio.com.br',
 };
 
