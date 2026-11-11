@@ -147,9 +147,9 @@ export function GenerateForm({ providers, needsKey, categories, initial, presele
   }
 
   return (
-    <div className="grid grid-cols-[minmax(0,1fr)] gap-3 lg:grid-cols-[minmax(0,1fr)_340px] lg:items-start">
-      {/* minmax(0,1fr): sem isso, nomes longos de produto alargam a coluna e empurram o resumo para fora da tela */}
-      <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-3">
+    // Coluna única: o Resumo é o último passo, embaixo, na largura toda (numa coluna lateral
+    // ele ficava fora da tela com nomes longos de produto). minmax(0,1fr) deixa o conteúdo encolher.
+    <div className="grid min-w-0 grid-cols-[minmax(0,1fr)] gap-3">
         <Step n={1} title="Produtos do Histórico de Ofertas" hint={`Selecione até ${MAX_PRODUCTS_PER_REQUEST}. Cada produto gera um vídeo.`}>
           <div className="flex flex-wrap gap-3">
             <label className="relative min-w-56 flex-1">
@@ -334,9 +334,9 @@ export function GenerateForm({ providers, needsKey, categories, initial, presele
           ) : (
             <div className="grid gap-4">
               {products.map((p) => (
-                <div key={p.itemId}>
+                <div key={p.itemId} className="min-w-0">
                   <div className="mb-1 flex items-center justify-between gap-2">
-                    <p className="truncate text-label-l">{p.name}</p>
+                    <p className="min-w-0 truncate text-label-l" title={p.name}>{p.name}</p>
                     {edited[p.itemId] !== undefined && (
                       <button type="button" onClick={() => setEdited((x) => { const next = { ...x }; delete next[p.itemId]; return next; })} className="shrink-0 text-label-m text-primary underline">Restaurar automático</button>
                     )}
@@ -348,49 +348,51 @@ export function GenerateForm({ providers, needsKey, categories, initial, presele
             </div>
           )}
         </Step>
-      </div>
 
-      <aside className="grid min-w-0 gap-3 lg:sticky lg:top-24">
-        <section className="rounded-xl border border-outline-variant/70 bg-surface-lowest p-6">
-          <h2 className="text-title-l">Resumo</h2>
-          <dl className="mt-4 space-y-2 text-body-m">
-            <div className="flex justify-between gap-3"><dt className="text-on-surface-variant">Produtos</dt><dd className="tabular-nums">{selected.size} / {MAX_PRODUCTS_PER_REQUEST}</dd></div>
-            <div className="flex justify-between gap-3"><dt className="text-on-surface-variant">Modelo</dt><dd className="truncate text-right">{caps?.label ?? '—'}</dd></div>
-            <div className="flex justify-between gap-3"><dt className="text-on-surface-variant">Formato</dt><dd>{FORMATS[format].label}</dd></div>
-            <div className="flex justify-between gap-3"><dt className="text-on-surface-variant">Duração</dt><dd>{duration} s · {resolution}</dd></div>
-            <div className="flex justify-between gap-3"><dt className="text-on-surface-variant">Estilo</dt><dd className="text-right">{STYLES[style].label}</dd></div>
-            <div className="flex justify-between gap-3"><dt className="text-on-surface-variant">Narração</dt><dd>{NARRATIONS[narration].label}</dd></div>
-            {provider?.tier === 'premium' && provider.quota && (
-              <div className="flex justify-between gap-3"><dt className="text-on-surface-variant">Cota premium</dt><dd className="tabular-nums">usa {Math.max(products.length, 1)} de {provider.quota.remaining} restantes</dd></div>
-            )}
-            {provider?.tier === 'economic' && caps?.usdPerSecond && (
-              <div className="flex justify-between gap-3"><dt className="text-on-surface-variant">Custo estimado (xAI)</dt><dd className="tabular-nums">{usd(caps.usdPerSecond * duration * Math.max(products.length, 1))}</dd></div>
-            )}
-          </dl>
-          {products.length > 0 && (
-            <ul className="mt-4 space-y-1 border-t border-outline-variant/60 pt-4">
-              {products.map((p) => (
-                <li key={p.itemId} className="flex items-center gap-2 text-body-s">
-                  <span className="min-w-0 flex-1 truncate">{p.name}</span>
-                  <button type="button" onClick={() => toggle(p)} aria-label={`Remover ${p.name}`} className="state-layer grid size-7 place-items-center rounded-full text-on-surface-variant"><Icon name="close" size={16} /></button>
-                </li>
-              ))}
-            </ul>
-          )}
-          {issues.length > 0 && <ul className="mt-4 space-y-1 text-body-s text-error">{issues.map((i) => <li key={i.field}>{i.message}</li>)}</ul>}
-          {overQuota && <p className="mt-4 text-body-s text-error">Sua cota premium tem {provider!.quota!.remaining} vídeo(s) restante(s) este mês. Remova produtos ou use a opção econômica.</p>}
-          <Button type="button" icon="movie" className="mt-5 w-full" disabled={sending || !products.length || issues.length > 0 || overQuota || !provider || !!provider.unavailable} onClick={submit}>
+      <Step n={8} title="Resumo e geração" hint="Confira antes de gerar.">
+        <dl className="grid gap-x-8 gap-y-3 text-body-m sm:grid-cols-2 lg:grid-cols-4">
+          {[
+            ['Produtos', `${selected.size} de ${MAX_PRODUCTS_PER_REQUEST}`],
+            ['Modelo', caps?.label ?? '—'],
+            ['Formato', FORMATS[format].label],
+            ['Duração', `${duration} s · ${resolution}`],
+            ['Estilo', STYLES[style].label],
+            ['Narração', NARRATIONS[narration].label],
+            ...(provider?.tier === 'premium' && provider.quota ? [['Cota premium', `usa ${Math.max(products.length, 1)} de ${provider.quota.remaining} restantes`]] : []),
+            ...(provider?.tier === 'economic' && caps?.usdPerSecond ? [['Custo estimado (xAI)', usd(caps.usdPerSecond * duration * Math.max(products.length, 1))]] : []),
+          ].map(([k, v]) => (
+            <div key={k} className="min-w-0">
+              <dt className="text-label-m text-on-surface-variant">{k}</dt>
+              <dd className="truncate tabular-nums" title={v}>{v}</dd>
+            </div>
+          ))}
+        </dl>
+        {products.length > 0 && (
+          <ul className="mt-5 flex flex-wrap gap-2 border-t border-outline-variant/60 pt-4">
+            {products.map((p) => (
+              <li key={p.itemId} className="inline-flex max-w-full items-center gap-1 rounded-sm border border-outline-variant py-1 pl-3 pr-1 text-body-s">
+                <span className="min-w-0 max-w-72 truncate" title={p.name}>{p.name}</span>
+                <button type="button" onClick={() => toggle(p)} aria-label={`Remover ${p.name}`} className="state-layer grid size-7 shrink-0 place-items-center rounded-full text-on-surface-variant"><Icon name="close" size={16} /></button>
+              </li>
+            ))}
+          </ul>
+        )}
+        {issues.length > 0 && <ul className="mt-4 space-y-1 text-body-s text-error">{issues.map((i) => <li key={i.field}>{i.message}</li>)}</ul>}
+        {overQuota && <p className="mt-4 text-body-s text-error">Sua cota premium tem {provider!.quota!.remaining} vídeo(s) restante(s) este mês. Remova produtos ou use a opção econômica.</p>}
+        <div className="mt-5 flex flex-wrap items-center gap-4">
+          <Button type="button" icon="movie" size="lg" className="max-sm:w-full" disabled={sending || !products.length || issues.length > 0 || overQuota || !provider || !!provider.unavailable} onClick={submit}>
             {sending ? 'Enviando…' : `Gerar ${products.length > 1 ? `${products.length} vídeos` : 'vídeo'}`}
           </Button>
-          <p className="mt-3 text-body-s text-on-surface-variant">A geração é cobrada pelo provedor. Os vídeos ficam só na galeria interna; nada é publicado.</p>
-          {result && (
-            <div role="status" className={`mt-4 rounded-md p-3 text-body-m ${result.ok ? 'bg-success-container text-on-success-container' : 'bg-error-container text-on-error-container'}`}>
-              {result.message}
-              {result.ok && <Link href="/app/videos/galeria?status=processing" className="mt-1 block text-label-l underline">Acompanhar na galeria</Link>}
-            </div>
-          )}
-        </section>
-      </aside>
+          <p className="min-w-0 flex-1 text-body-s text-on-surface-variant">A geração é cobrada pelo provedor. Os vídeos ficam só na galeria interna; nada é publicado.</p>
+        </div>
+        {!products.length && <p className="mt-3 text-body-s text-on-surface-variant">Selecione ao menos um produto no passo 1.</p>}
+        {result && (
+          <div role="status" className={`mt-4 rounded-md p-3 text-body-m ${result.ok ? 'bg-success-container text-on-success-container' : 'bg-error-container text-on-error-container'}`}>
+            {result.message}
+            {result.ok && <Link href="/app/videos/galeria?status=processing" className="ml-2 text-label-l underline">Acompanhar na galeria</Link>}
+          </div>
+        )}
+      </Step>
     </div>
   );
 }
