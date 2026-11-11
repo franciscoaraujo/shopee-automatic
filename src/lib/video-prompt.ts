@@ -6,15 +6,41 @@ const brl = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', c
 
 const ORIENTATION: Record<VideoFormat, string> = { '9:16': 'vertical', '16:9': 'horizontal', '1:1': 'quadrado' };
 
-function narrationText(o: GenerationOptions): string {
+// Nome curto para falar em voz alta: títulos da Shopee são longos e cheios de palavras-chave.
+export function spokenName(name: string): string {
+  const clean = name.replace(/[\[\]{}()|/\\_*#"“”]+/g, ' ').replace(/\s+/g, ' ').trim();
+  const words = clean.split(' ').filter(Boolean);
+  return words.slice(0, 6).join(' ').replace(/[\s,.;:!?–-]+$/, '') || 'esta oferta';
+}
+
+// Fala pronta (entre aspas no prompt): modelos de vídeo dizem bem melhor um texto exato
+// do que uma instrução genérica como "narre o produto".
+export function narrationScript(p: ProductSnapshot, language: GenerationOptions['language']): string {
+  const name = spokenName(p.name);
+  const price = p.price ? brl(p.price) : null;
+  const was = p.originalPrice && p.price && p.originalPrice > p.price ? brl(p.originalPrice) : null;
+  switch (language) {
+    case 'en-US':
+      return `Check out this deal: ${name}!${price ? (was ? ` From ${was} down to just ${price}.` : ` Only ${price}.`) : ''} Grab it while it lasts!`;
+    case 'es-ES':
+      return `¡Mira esta oferta: ${name}!${price ? (was ? ` De ${was} por solo ${price}.` : ` Por solo ${price}.`) : ''} ¡Aprovecha antes de que se acabe!`;
+    default:
+      return `Olha esse achado: ${name}!${price ? (was ? ` De ${was} por apenas ${price}.` : ` Por apenas ${price}.`) : ''} Corre, que é por tempo limitado!`;
+  }
+}
+
+// Áudio do vídeo. A trilha sonora vale para todas as opções; "Sem narração" tira só a voz.
+function audioText(p: ProductSnapshot, o: GenerationOptions): string {
   const lang = LANGUAGES[o.language];
   const voice = o.voiceInstructions.trim() ? ` Instruções de voz: ${o.voiceInstructions.trim()}.` : '';
+  const music = 'Trilha sonora: música de fundo animada e moderna, em volume que não atrapalhe a voz.';
+  const line = narrationScript(p, o.language);
   switch (o.narration) {
-    case 'none': return 'Sem narração falada; use apenas trilha sonora discreta.';
-    case 'female': return `Narração em voz feminina, em ${lang}.${voice}`;
-    case 'male': return `Narração em voz masculina, em ${lang}.${voice}`;
-    case 'text': return `Sem narração falada; transmita a mensagem com textos curtos e legíveis na tela, em ${lang}.`;
-    case 'narrated_subtitles': return `Narração em ${lang} com legendas sincronizadas na tela.${voice}`;
+    case 'none': return `${music}\nSem voz: nenhuma narração falada.`;
+    case 'female': return `${music}\nNarração em voz feminina, clara e animada, em ${lang}, dizendo exatamente: "${line}"${voice}`;
+    case 'male': return `${music}\nNarração em voz masculina, clara e animada, em ${lang}, dizendo exatamente: "${line}"${voice}`;
+    case 'text': return `${music}\nSem voz: transmita a mensagem com textos curtos e legíveis na tela, em ${lang}, por exemplo: "${line}"`;
+    case 'narrated_subtitles': return `${music}\nNarração em ${lang}, com legendas sincronizadas na tela, dizendo exatamente: "${line}"${voice}`;
   }
 }
 
@@ -33,7 +59,7 @@ export function buildVideoPrompt(p: ProductSnapshot, o: GenerationOptions, forma
     lines.push('', 'Preço original:', `${brl(p.originalPrice)}${p.discountRate ? ` (${Math.round(p.discountRate)}% de desconto)` : ''}`);
   }
   lines.push('', 'Estilo visual:', STYLES[o.style].prompt);
-  lines.push('', 'Narração:', narrationText(o));
+  lines.push('', 'Áudio:', audioText(p, o));
   lines.push('');
   lines.push('Produza um vídeo dinâmico, com transições suaves, apresentação visual do produto, textos legíveis e chamada para ação.');
   lines.push('');

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildVideoPrompt } from './video-prompt';
+import { buildVideoPrompt, narrationScript } from './video-prompt';
 import {
   canTransition, isReviewable, originalPriceOf, TRANSITIONS, validateRequest, VIDEO_STATUSES,
   type GenerationOptions, type ModelCapabilities, type ProductSnapshot,
@@ -78,8 +78,20 @@ describe('prompt automático', () => {
     expect(prompt).toContain('vertical');
     expect(prompt).toMatch(/R\$\s?49,90/);
     expect(prompt).toMatch(/R\$\s?99,80 \(50% de desconto\)/);
-    expect(prompt).toContain('Narração em voz feminina, em Português (Brasil). Instruções de voz: tom animado.');
+    expect(prompt).toContain('Narração em voz feminina, clara e animada, em Português (Brasil), dizendo exatamente: "Olha esse achado: Garrafa Térmica 1L! De R$');
+    expect(prompt).toContain('Instruções de voz: tom animado.');
     expect(prompt).toContain('Instruções adicionais:\nfundo claro');
+  });
+  it('sempre pede trilha sonora; "Sem narração" tira só a voz', () => {
+    expect(prompt).toContain('Trilha sonora: música de fundo animada');
+    const none = buildVideoPrompt(product, { ...opts, narration: 'none' }, '9:16', 10);
+    expect(none).toContain('Trilha sonora: música de fundo animada');
+    expect(none).toContain('Sem voz: nenhuma narração falada.');
+  });
+  it('fala pronta curta, sem o título inteiro da Shopee', () => {
+    const long = { ...product, name: 'Kit 10 Embalagens PVC Organizadora Roupa, Cama, Mesa e Banho Armário Cômoda [ENVIO IMEDIATO]' };
+    expect(narrationScript(long, 'pt-BR')).toMatch(/^Olha esse achado: Kit 10 Embalagens PVC Organizadora Roupa! De R\$\s?99,80 por apenas R\$\s?49,90\. Corre, que é por tempo limitado!$/);
+    expect(narrationScript({ ...product, originalPrice: null }, 'en-US')).toMatch(/^Check out this deal: Garrafa Térmica 1L! Only R\$\s?49,90\. Grab it while it lasts!$/);
   });
   it('proíbe inventar características e alterar o produto', () => {
     expect(prompt).toContain('Não invente características, funcionalidades ou benefícios');
@@ -89,7 +101,7 @@ describe('prompt automático', () => {
     const p = buildVideoPrompt({ ...product, originalPrice: null, discountRate: null }, { ...opts, narration: 'none', extraInstructions: '' }, '16:9', 8);
     expect(p).not.toContain('Preço original');
     expect(p).toContain('horizontal');
-    expect(p).toContain('Sem narração falada');
+    expect(p).toContain('Sem voz: nenhuma narração falada.');
     expect(p).not.toContain('Instruções adicionais');
   });
 });

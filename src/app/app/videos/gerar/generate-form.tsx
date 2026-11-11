@@ -19,7 +19,7 @@ export type ProviderOption = {
   quota: { limit: number; used: number; remaining: number } | null;  // só no premium
 };
 
-const usd = (v: number) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD', minimumFractionDigits: 2 }).format(v);
+const usd = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'USD', minimumFractionDigits: 2 }).format(v);
 type Page = { items: ProductRow[]; total: number; page: number; pages: number };
 
 const brl = (v: number | null) => (v ? new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v) : '—');
@@ -85,7 +85,8 @@ export function GenerateForm({ providers, needsKey, categories, initial, presele
   const [custom, setCustom] = useState(false);
   const [resolution, setResolution] = useState(provider?.defaultResolution || caps?.defaultResolution || '720p');
   const [style, setStyle] = useState<VideoStyle>('showcase');
-  const [narration, setNarration] = useState<Narration>('none');
+  // Padrão com voz quando o modelo gera áudio (a trilha sonora vem em todas as opções)
+  const [narration, setNarration] = useState<Narration>(() => (caps?.audio ? 'female' : 'text'));
   const [language, setLanguage] = useState<Language>('pt-BR');
   const [voiceInstructions, setVoice] = useState('');
   const [extraInstructions, setExtra] = useState('');

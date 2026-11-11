@@ -8,7 +8,7 @@
 // Cada projeto é "reservado" (locked_until) com FOR UPDATE SKIP LOCKED: várias instâncias do
 // worker podem rodar sem processar o mesmo vídeo. Se o worker cair no meio, a reserva expira
 // e outro retoma do estado gravado (o id do job no provedor fica salvo).
-import { canTransition, NARRATIONS, type GenerationOptions, type ProductSnapshot, type VideoFormat, type VideoStatus } from '@/lib/videos';
+import { canTransition, type GenerationOptions, type ProductSnapshot, type VideoFormat, type VideoStatus } from '@/lib/videos';
 import { q } from '@/server/db';
 import { imageMime, inspectVideo, looksLikeMp4, MAX_IMAGE_BYTES, MAX_VIDEO_BYTES } from './media';
 import { platformAdapter } from './platform';
@@ -134,7 +134,9 @@ async function submit(job: Job, provider: VideoGenerationProvider) {
   const req = {
     model: job.model, prompt: job.prompt, format: job.requested_format, duration: job.requested_duration,
     resolution: job.options.resolution || caps?.defaultResolution || '720p',
-    withAudio: NARRATIONS[job.options.narration]?.needsAudio ?? true,
+    // Áudio sempre que o modelo suportar: "Sem narração" tira só a voz (pelo prompt), não a
+    // trilha sonora. Desligar o áudio aqui deixava o vídeo mudo.
+    withAudio: caps?.audio ?? true,
     referenceImage: image,
   };
   // Payload registrado SEM chave e sem binário (só tamanho da imagem)
