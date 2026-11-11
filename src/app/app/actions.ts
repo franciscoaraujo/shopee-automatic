@@ -6,7 +6,8 @@ import { SECTIONS, type SectionId } from '@/lib/settings-schema';
 import { rateLimit } from '@/lib/rate-limit';
 import { findUserForLogin, isOperational, setPassword, verifyPassword } from '@/server/accounts';
 import { q } from '@/server/db';
-import { testShopee, testTelegram, waConnect, waGroups, waLogout, waState, type Result } from '@/server/integrations';
+import { testShopee, testTelegram, waGroups, waLogout, waState, type Result } from '@/server/integrations';
+import { connectError, connectWhatsApp, type ConnectResult } from '@/server/whatsapp-connection';
 import { endOtherSessions, requireSession } from '@/server/session';
 import { effectivePlan } from '@/server/plans';
 import { clearSetting, getSettings, saveSection, setSettingsRaw } from '@/server/settings';
@@ -70,13 +71,15 @@ export async function waStatusAction() {
   return waState(account.id);
 }
 
-export async function waConnectAction(): Promise<{ qr: string | null; pairingCode: string | null; state: string; error?: string }> {
+// dedicatedNumberConfirmed: a caixa "uso um número dedicado" marcada na tela. A renovação automática
+// do QR Code chama sem ela; o servidor aceita porque a conta já confirmou.
+export async function waConnectAction(dedicatedNumberConfirmed = false): Promise<ConnectResult> {
   const { account } = await requireSession();
-  if (!rateLimit(`wa-connect:${account.id}`, 30, 10 * 60_000)) return { qr: null, pairingCode: null, state: 'error', error: 'Muitas tentativas. Aguarde alguns minutos.' };
+  if (!rateLimit(`wa-connect:${account.id}`, 30, 10 * 60_000)) return connectError('Muitas tentativas. Aguarde alguns minutos.');
   try {
-    return await waConnect(account.id);
+    return await connectWhatsApp(account.id, { dedicatedNumberConfirmed: dedicatedNumberConfirmed === true });
   } catch (err) {
-    return { qr: null, pairingCode: null, state: 'error', error: (err as Error).message };
+    return connectError((err as Error).message);
   }
 }
 

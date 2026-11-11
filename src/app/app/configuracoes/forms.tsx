@@ -156,7 +156,11 @@ export function ScheduleForm({ settings, mode, earliest, latest }: { settings: P
 /* ------------------------------------------------------------------ WhatsApp */
 type WaUi = 'open' | 'connecting' | 'close' | 'missing' | 'error';
 
-export function WhatsAppPanel({ initialState, initialError, settings }: { initialState: WaUi; initialError?: string; settings: PublicSettings }) {
+const dateBr = new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'America/Sao_Paulo' });
+
+export function WhatsAppPanel({ initialState, initialError, settings, dedicatedConfirmedAt }: {
+  initialState: WaUi; initialError?: string; settings: PublicSettings; dedicatedConfirmedAt: string | null;
+}) {
   const router = useRouter();
   const [state, setState] = useState<WaUi>(initialState);
   const [error, setError] = useState<string | undefined>(initialError);
@@ -164,6 +168,9 @@ export function WhatsAppPanel({ initialState, initialError, settings }: { initia
   const [busy, start] = useTransition();
   const [groups, setGroups] = useState<{ id: string; subject: string; size: number | null }[] | null>(null);
   const [groupMsg, setGroupMsg] = useState<Result | null>(null);
+  // Número dedicado: obrigatório antes do primeiro QR Code (quem já confirmou não precisa de novo)
+  const [dedicatedChecked, setDedicatedChecked] = useState(false);
+  const canConnect = !!dedicatedConfirmedAt || dedicatedChecked;
 
   // Enquanto o QR está na tela: confere o estado a cada 3 s e renova o QR a cada 25 s
   useEffect(() => {
@@ -187,7 +194,7 @@ export function WhatsAppPanel({ initialState, initialError, settings }: { initia
 
   const connect = () => start(async () => {
     setError(undefined);
-    const r = await waConnectAction();
+    const r = await waConnectAction(dedicatedChecked);
     if (r.error) { setError(r.error); setState('error'); return; }
     if (r.state === 'open') { setState('open'); router.refresh(); return; }
     setQr(r.qr);
@@ -233,13 +240,29 @@ export function WhatsAppPanel({ initialState, initialError, settings }: { initia
             </ol>
           </div>
         ) : (
-          <p className="text-body-l text-on-surface-variant">
-            Use um número dedicado ao grupo de ofertas (não o pessoal). Ele precisa participar do grupo onde as ofertas serão publicadas.
-          </p>
+          <div className="space-y-4">
+            <div className="rounded-md border border-tertiary/30 bg-tertiary/5 p-4">
+              <p className="flex items-center gap-2 text-title-s"><Icon name="warning" size={18} className="text-tertiary" /> Use um número dedicado ao grupo</p>
+              <ul className="mt-2 list-disc space-y-1 pl-5 text-body-m text-on-surface-variant">
+                <li>O WhatsApp pode bloquear números que publicam ofertas com frequência. Se isso acontecer, só o número dedicado é afetado.</li>
+                <li>Use um chip exclusivo para o grupo de ofertas, de preferência com o WhatsApp Business.</li>
+                <li><b className="text-on-surface">Nunca use o seu número pessoal.</b></li>
+                <li>O número precisa participar do grupo onde as ofertas serão publicadas.</li>
+              </ul>
+            </div>
+            {dedicatedConfirmedAt ? (
+              <p className="flex items-center gap-2 text-body-m text-on-surface-variant"><Icon name="check_circle" size={18} className="text-success" /> Número dedicado confirmado em {dateBr.format(new Date(dedicatedConfirmedAt))}.</p>
+            ) : (
+              <label className="flex cursor-pointer items-start gap-3 text-body-l">
+                <input type="checkbox" checked={dedicatedChecked} onChange={(e) => setDedicatedChecked(e.target.checked)} className="mt-1 size-5 accent-[var(--md-primary)]" />
+                <span>Confirmo que vou conectar um número dedicado ao grupo de ofertas, e não o meu número pessoal.</span>
+              </label>
+            )}
+          </div>
         )}
         {error && <Feedback result={{ ok: false, message: error }} />}
         {!qr && (
-          <Button type="button" icon="qr_code_2" onClick={connect} disabled={busy}>
+          <Button type="button" icon="qr_code_2" onClick={connect} disabled={busy || !canConnect}>
             {busy ? 'Gerando QR Code…' : 'Conectar WhatsApp'}
           </Button>
         )}
@@ -256,6 +279,7 @@ export function WhatsAppPanel({ initialState, initialError, settings }: { initia
         <button type="button" onClick={disconnect} disabled={busy} className="state-layer rounded-full px-3 py-1.5 text-label-l text-error">
           Desconectar
         </button>
+        {dedicatedConfirmedAt && <span className="text-body-s text-on-surface-variant">Número dedicado confirmado em {dateBr.format(new Date(dedicatedConfirmedAt))}</span>}
       </div>
 
       <div>

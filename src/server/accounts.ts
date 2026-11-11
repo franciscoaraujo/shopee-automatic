@@ -40,6 +40,7 @@ export type Account = {
   kw_index: number;
   page: number;
   created_at: Date;
+  whatsapp_dedicated_confirmed_at: Date | null;   // confirmou número dedicado ao grupo (null = nunca)
 };
 
 export type User = { id: string; account_id: string; name: string; email: string; created_at: Date; last_login_at: Date | null; email_verified_at?: Date | null };

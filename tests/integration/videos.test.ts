@@ -109,7 +109,8 @@ suite('Shopee Video Studio (integração)', () => {
   /* ---------------------------------------------------------------- migrations */
   it('aplica as migrations uma única vez', async () => {
     const ids = (await m.db.q<{ id: string }>('SELECT id FROM schema_migrations ORDER BY id')).map((r) => r.id);
-    expect(ids).toEqual(['001_deliveries_product_fields', '002_video_studio', '003_platform_videos']);
+    // todas as declaradas, na ordem (inclui as do módulo de vídeos)
+    expect(ids).toEqual(m.mig.MIGRATIONS.map((x) => x.id));
     expect(await m.mig.runMigrations(m.db.pool())).toEqual([]);
   });
 

@@ -144,6 +144,12 @@ export const MIGRATIONS: Migration[] = [
         CHECK (premium_videos_month IS NULL OR premium_videos_month BETWEEN 0 AND 1000);
     `,
   },
+  {
+    // Proteção contra banimento (#1, #3): momento em que o cliente confirmou que usa um número
+    // de WhatsApp dedicado ao grupo. Contas já conectadas ficam NULL e não são afetadas.
+    id: '004_whatsapp_dedicated_number',
+    sql: `ALTER TABLE accounts ADD COLUMN whatsapp_dedicated_confirmed_at timestamptz;`,
+  },
 ];
 
 const LOCK_ID = 727_001; // advisory lock exclusivo das migrations

@@ -90,7 +90,8 @@ async function Content({ searchParams }: { searchParams: PageProps<'/app/configu
 
         <Card id="whatsapp" icon="chat" title="WhatsApp" description="Conecte um número lendo o QR Code e escolha o grupo de destino."
           status={!raw.whatsappEnabled && wa.state !== 'open' ? { ok: false, label: 'Desativado' } : { ok: wa.state === 'open' && !!raw.whatsappGroupJid, label: wa.state === 'open' ? (raw.whatsappGroupJid ? 'Publicando' : 'Escolha o grupo') : 'Desconectado' }}>
-          <WhatsAppPanel initialState={wa.state} initialError={wa.error} settings={pub} />
+          <WhatsAppPanel initialState={wa.state} initialError={wa.error} settings={pub}
+            dedicatedConfirmedAt={account.whatsapp_dedicated_confirmed_at ? new Date(account.whatsapp_dedicated_confirmed_at).toISOString() : null} />
         </Card>
 
         <Card id="telegram" icon="send" title="Telegram"
