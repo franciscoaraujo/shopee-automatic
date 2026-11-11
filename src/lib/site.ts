@@ -8,3 +8,6 @@ export const site = {
 };
 
 export const waLink = (text: string) => `https://wa.me/${site.whatsapp}?text=${encodeURIComponent(text)}`;
+
+// Mensagem que já vem escrita quando o visitante abre a conversa pelo site
+export const WA_SITE_MESSAGE = `Olá! Vim pelo site do ${site.name} e quero saber mais.`;

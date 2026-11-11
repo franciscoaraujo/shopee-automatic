@@ -2,7 +2,7 @@ import type { Metadata } from 'next';
 import { Suspense } from 'react';
 import { SignupForm } from '@/app/(auth)/forms';
 import { Icon, type IconName } from '@/components/icons';
-import { Footer, TopBar } from '@/components/landing/chrome';
+import { Footer, TopBar, WhatsAppFab } from '@/components/landing/chrome';
 import { listPlans } from '@/server/plans';
 
 export const metadata: Metadata = {
@@ -60,6 +60,7 @@ export default function CadastroPage({ searchParams }: PageProps<'/cadastro'>) {
         </div>
       </main>
       <Footer />
+      <WhatsAppFab />
     </>
   );
 }

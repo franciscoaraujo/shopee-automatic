@@ -3,7 +3,8 @@ import { connection } from 'next/server';
 import { TRIAL_DAYS, TRIAL_PLAN } from '@/lib/plans';
 import { listPlans } from '@/server/plans';
 import { Icon, type IconName } from '../icons';
-import { LinkButton, SectionLabel } from '../md';
+import { LinkButton, SectionLabel, buttonClass } from '../md';
+import { waLink, WA_SITE_MESSAGE } from '@/lib/site';
 
 /* ------------------------------------------------------------------ Uma rodada por dentro */
 const RUN: { t: string; icon: IconName; title: string; detail: string; out: string }[] = [
@@ -389,6 +390,10 @@ export function FinalCta() {
               <LinkButton href="/cadastro" variant="inverse" size="lg" trailingIcon="arrow_forward">
                 Começar teste grátis
               </LinkButton>
+              <a href={waLink(WA_SITE_MESSAGE)} target="_blank" rel="noopener noreferrer"
+                className={buttonClass('outlined', 'lg', 'border-on-primary-container/40 !text-on-primary-container')}>
+                <Icon name="chat" size={20} /> Falar no WhatsApp
+              </a>
             </div>
           </div>
           <Icon name="bolt" size={360} className="pointer-events-none absolute -bottom-16 -right-10 hidden text-on-primary-container/10 md:block" />

@@ -1,4 +1,4 @@
-import { Footer, TopBar } from '@/components/landing/chrome';
+import { Footer, TopBar, WhatsAppFab } from '@/components/landing/chrome';
 import { LiveFeed } from '@/components/landing/live-feed';
 import {
   CompareSection,
@@ -84,6 +84,7 @@ export default function Home() {
         <FinalCta />
       </main>
       <Footer />
+      <WhatsAppFab />
     </>
   );
 }

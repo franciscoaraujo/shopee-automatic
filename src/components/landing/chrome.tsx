@@ -1,8 +1,25 @@
 // Barra superior e rodapé
 import Link from 'next/link';
-import { site } from '@/lib/site';
+import { site, waLink, WA_SITE_MESSAGE } from '@/lib/site';
 import { Icon } from '../icons';
 import { LinkButton } from '../md';
+
+// Botão flutuante de atendimento. Verde escuro (não o #25D366) para o texto branco
+// ter contraste suficiente; no celular vira só o ícone para não cobrir o conteúdo.
+export function WhatsAppFab() {
+  return (
+    <a
+      href={waLink(WA_SITE_MESSAGE)}
+      target="_blank"
+      rel="noopener noreferrer"
+      aria-label="Falar no WhatsApp"
+      className="fixed bottom-5 right-5 z-40 inline-flex h-14 items-center gap-2 rounded-full bg-[#0f7b5f] px-4 text-label-l text-white shadow-e2 transition-[background-color,box-shadow] hover:bg-[#0c6a52] hover:shadow-e3 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#0f7b5f] sm:px-6"
+    >
+      <Icon name="chat" size={24} />
+      <span className="max-sm:sr-only">Falar no WhatsApp</span>
+    </a>
+  );
+}
 
 const NAV = [
   { href: '/#rodada', label: 'Como funciona' },
@@ -86,6 +103,11 @@ export function Footer() {
         <div>
           <p className="text-title-s">Contato</p>
           <ul className="mt-3 space-y-2 text-body-m text-on-surface-variant">
+            <li>
+              <a className="inline-flex items-center gap-1.5 hover:text-primary" href={waLink(WA_SITE_MESSAGE)} target="_blank" rel="noopener noreferrer">
+                <Icon name="chat" size={18} /> Falar no WhatsApp
+              </a>
+            </li>
             <li><a className="hover:text-primary" href={`mailto:${site.email}`}>{site.email}</a></li>
             <li><Link className="hover:text-primary" href="/privacidade">Privacidade</Link></li>
           </ul>
