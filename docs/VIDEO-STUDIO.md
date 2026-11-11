@@ -59,6 +59,13 @@ Os modelos Veo 3.1 Preview foram desligados na Gemini API em 22/10/2026. Por iss
 
 ### Dois tipos de vídeo: Premium e Econômico
 
+> **Estado atual: Gemini desativado.** Só o xAI Grok, com a chave do cliente, está ativo. O código do
+> Gemini continua no projeto. Para reativar:
+> 1. Mude `PREMIUM_ENABLED` para `true` em `src/server/videos/platform.ts`.
+> 2. Descomente a entrada `gemini` em `src/server/videos/providers/index.ts`.
+> 3. Descomente as variáveis `PLATFORM_*` no `docker-compose.yml` e defina `PLATFORM_GEMINI_API_KEY`.
+> 4. Volte os testes marcados com `it.skip` ("GEMINI DESATIVADO").
+
 | | **Premium: Google Gemini** | **Econômico: xAI Grok** |
 |---|---|---|
 | Quem paga | a **plataforma** (`PLATFORM_GEMINI_API_KEY`) | o **cliente**, na conta xAI dele |

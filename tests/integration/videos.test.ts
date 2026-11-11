@@ -130,8 +130,8 @@ suite('Shopee Video Studio (integração)', () => {
   it('guarda a chave criptografada e nunca a devolve na listagem', async () => {
     await expect(m.repo.createProvider(A, { type: 'xai', name: '', apiKey: 'curta' })).rejects.toThrow(/inválida|formato/);
     await expect(m.repo.createProvider(A, { type: 'inexistente', name: '', apiKey: 'x'.repeat(40) })).rejects.toThrow(/inválido/);
-    // Gemini é da plataforma (premium): o cliente não cadastra chave
-    await expect(m.repo.createProvider(A, { type: 'gemini', name: '', apiKey: 'AIza' + 'k'.repeat(35) })).rejects.toThrow(/fornecido pela plataforma/);
+    // Gemini desativado (e, quando ativo, é só da plataforma): o cliente não cadastra chave
+    await expect(m.repo.createProvider(A, { type: 'gemini', name: '', apiKey: 'AIza' + 'k'.repeat(35) })).rejects.toThrow(/inválido|fornecido pela plataforma/);
     const key = 'xai-' + 'k'.repeat(35);
     const gid = await m.repo.createProvider(A, { type: 'xai', name: 'Meu Grok', apiKey: key });
     const row = await m.db.one<{ api_key_encrypted: string; is_default: boolean }>('SELECT api_key_encrypted, is_default FROM ai_providers WHERE id = $1', [gid]);
@@ -286,7 +286,8 @@ suite('Shopee Video Studio (integração)', () => {
     expect(del.length).toBe(1);
   });
 
-  it('premium: usa a IA da plataforma, respeita limites de custo e a cota mensal', async () => {
+  // GEMINI DESATIVADO POR ENQUANTO (PREMIUM_ENABLED = false): reative junto com o Gemini
+  it.skip('premium: usa a IA da plataforma, respeita limites de custo e a cota mensal', async () => {
     (globalThis as { __platformStatus?: unknown }).__platformStatus = { at: Date.now(), ok: true, message: 'Disponível' };
     const { PLATFORM_PROVIDER_ID, premiumQuota } = await import('@/server/videos/platform');
     const premium = (key: string, duration = 10) => m.repo.createProjects(B, null, {
@@ -324,6 +325,6 @@ suite('Shopee Video Studio (integração)', () => {
     expect(d.kpis.total).toBeGreaterThan(0);
     expect(d.kpis.total).toBe(d.kpis.processing + d.kpis.review + d.kpis.approved + d.kpis.rejected + d.kpis.failed);
     expect((await m.repo.dashboard(A, { period: 'all', provider: 'gemini' })).kpis.total).toBe(0);           // A não usou premium
-    expect((await m.repo.dashboard(B, { period: 'all', provider: 'xai' })).kpis.total).toBe(0);
+    expect((await m.repo.dashboard(B, { period: 'all' })).kpis.total).toBe(0);
   });
 });

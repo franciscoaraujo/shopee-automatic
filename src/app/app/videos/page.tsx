@@ -5,7 +5,7 @@ import { Icon, type IconName } from '@/components/icons';
 import { LinkButton } from '@/components/md';
 import { STATUS_GROUPS, statusGroup } from '@/lib/videos';
 import { requireSession } from '@/server/session';
-import { platformStatus, premiumQuota } from '@/server/videos/platform';
+import { PREMIUM_ENABLED, platformStatus, premiumQuota } from '@/server/videos/platform';
 import { dashboard, filterOptions, listProviders, PERIODS, periodKey } from '@/server/videos/repo';
 import { LiveRefresh } from '../live';
 import { FilterBar } from './filters';
@@ -35,7 +35,7 @@ async function Dashboard({ searchParams }: { searchParams: PageProps<'/app/video
       {!ready && (
         <div className="flex flex-wrap items-center gap-4 rounded-lg border border-primary/30 bg-primary/5 p-4">
           <Icon name="info" className="text-primary" />
-          <p className="flex-1 text-body-l">{quota.limit === 0 ? 'Seu plano não inclui vídeos premium.' : 'Os vídeos premium estão indisponíveis no momento.'} Para gerar vídeos econômicos, cadastre sua chave do xAI Grok.</p>
+          <p className="flex-1 text-body-l">{PREMIUM_ENABLED ? `${quota.limit === 0 ? 'Seu plano não inclui vídeos premium.' : 'Os vídeos premium estão indisponíveis no momento.'} Para gerar vídeos econômicos, cadastre sua chave do xAI Grok.` : 'Para gerar vídeos, cadastre sua chave do xAI Grok.'}</p>
           <LinkButton href="/app/videos/ia" size="md">Cadastrar chave do Grok</LinkButton>
         </div>
       )}
@@ -83,11 +83,14 @@ async function Dashboard({ searchParams }: { searchParams: PageProps<'/app/video
             </ul>
           )}
         </Card>
-        <Card title="Uso" description="Cota premium do mês e limite diário de gerações">
+        <Card title="Uso" description={PREMIUM_ENABLED ? 'Cota premium do mês e limite diário de gerações' : 'Limite diário de gerações'}>
+          {/* Cota premium — GEMINI DESATIVADO POR ENQUANTO */}
+          {PREMIUM_ENABLED && (<>
           <p className="text-label-m text-on-surface-variant">Premium (Google Gemini)</p>
           <p className="mt-1 font-display text-[2rem] font-semibold leading-none tabular-nums">{quota.used}<span className="text-title-m text-on-surface-variant"> / {quota.limit}</span></p>
           <p className="mt-2 text-body-m text-on-surface-variant">{quota.limit === 0 ? 'não incluído no seu plano' : `vídeos premium este mês · ${quota.remaining} restantes`}</p>
           <hr className="my-5 border-outline-variant/60" />
+          </>)}
           <p className="text-label-m text-on-surface-variant">Todas as gerações</p>
           <p className="mt-1 font-display text-[2rem] font-semibold leading-none tabular-nums">{d.usage.last24h}<span className="text-title-m text-on-surface-variant"> / {d.usage.dailyLimit}</span></p>
           <p className="mt-2 text-body-m text-on-surface-variant">vídeos nas últimas 24 horas</p>
@@ -99,7 +102,7 @@ async function Dashboard({ searchParams }: { searchParams: PageProps<'/app/video
               <Icon name="error" size={18} /> {k.failed} {k.failed === 1 ? 'geração falhou' : 'gerações falharam'} no período
             </Link>
           )}
-          <p className="mt-6 text-body-s text-on-surface-variant">Vídeos econômicos (Grok) são cobrados na sua conta xAI.</p>
+          <p className="mt-6 text-body-s text-on-surface-variant">Os vídeos são cobrados na sua conta xAI.</p>
         </Card>
       </div>
     </div>

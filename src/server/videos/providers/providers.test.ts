@@ -179,7 +179,8 @@ describe('GrokVideoProvider', () => {
 });
 
 describe('IA da plataforma (premium)', () => {
-  it('aplica os limites de custo do operador ao modelo', async () => {
+  // GEMINI DESATIVADO POR ENQUANTO (PREMIUM_ENABLED = false): reative junto com o Gemini
+  it.skip('aplica os limites de custo do operador ao modelo', async () => {
     const { platformConfig } = await import('../platform');
     expect(platformConfig({ PLATFORM_VIDEO_MAX_DURATION: '99', PLATFORM_VIDEO_MAX_RESOLUTION: 'xx' } as unknown as NodeJS.ProcessEnv)).toMatchObject({ maxDuration: 15, maxResolution: '720p', model: 'gemini-omni-1.2-flash' });
     process.env.PLATFORM_VIDEO_MAX_DURATION = '8';
@@ -199,7 +200,8 @@ describe('IA da plataforma (premium)', () => {
 });
 
 describe('formato das chaves', () => {
-  it('aceita a chave clássica (AIza…) e a nova (AQ.…) do Google', async () => {
+  // GEMINI DESATIVADO POR ENQUANTO: a entrada "gemini" está comentada em ./index.ts
+  it.skip('aceita a chave clássica (AIza…) e a nova (AQ.…) do Google', async () => {
     const { PROVIDERS } = await import('./index');
     expect(PROVIDERS.gemini.keyPattern!.test(KEY_G)).toBe(true);
     expect(PROVIDERS.gemini.keyPattern!.test('AQ.Ab8RN6Ik1xYlJKBicuB2ybE7cP7DNyb4ojmGbDHYTESTE')).toBe(true);

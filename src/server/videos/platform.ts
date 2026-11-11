@@ -14,6 +14,11 @@ import { one } from '@/server/db';
 import { GEMINI_CATALOG, GeminiVideoProvider } from './providers/gemini';
 import type { VideoGenerationProvider } from './providers/types';
 
+// GEMINI DESATIVADO POR ENQUANTO: vídeos premium (Gemini da plataforma) ficam desligados e
+// somem das telas; só os vídeos com a chave xAI Grok do cliente funcionam. Para reativar:
+// mude para true, descomente o Gemini em ./providers/index.ts e defina PLATFORM_GEMINI_API_KEY.
+export const PREMIUM_ENABLED = false;
+
 export const PLATFORM_PROVIDER_ID = 'platform:gemini';
 export const PLATFORM_PROVIDER_TYPE = 'gemini';
 export const PLATFORM_LABEL = 'Google Gemini (Premium)';
@@ -30,10 +35,11 @@ export function platformConfig(env: NodeJS.ProcessEnv = process.env) {
   };
 }
 
-export const isPlatformConfigured = () => platformConfig().apiKey.length > 0;
+export const isPlatformConfigured = () => PREMIUM_ENABLED && platformConfig().apiKey.length > 0;
 
 // Capacidades do modelo da plataforma, já com os limites de custo do operador
 export function platformModel(): ModelCapabilities | null {
+  if (!PREMIUM_ENABLED) return null;
   const cfg = platformConfig();
   const base = GEMINI_CATALOG.find((m) => m.id === cfg.model);
   if (!base) return null;
@@ -62,6 +68,7 @@ export function platformAdapter(): VideoGenerationProvider {
 // Disponibilidade real (chave válida e com acesso ao modelo). Cache de 10 min por processo.
 const g = globalThis as unknown as { __platformStatus?: { at: number; ok: boolean; message: string } };
 export async function platformStatus(force = false): Promise<{ ok: boolean; message: string }> {
+  if (!PREMIUM_ENABLED) return { ok: false, message: 'Vídeos premium estão desativados.' };
   if (!isPlatformConfigured()) return { ok: false, message: 'Vídeos premium ainda não foram ativados pela plataforma.' };
   const c = g.__platformStatus;
   if (!force && c && Date.now() - c.at < 10 * 60_000) return c;

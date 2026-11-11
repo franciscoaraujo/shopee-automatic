@@ -3,7 +3,7 @@ import { connection } from 'next/server';
 import { Suspense } from 'react';
 import { Icon } from '@/components/icons';
 import { requireSession } from '@/server/session';
-import { platformModel, platformStatus, premiumQuota } from '@/server/videos/platform';
+import { PREMIUM_ENABLED, platformModel, platformStatus, premiumQuota } from '@/server/videos/platform';
 import { providerTypes } from '@/server/videos/providers';
 import { listProviders } from '@/server/videos/repo';
 import { Card } from '../ui';
@@ -20,8 +20,8 @@ async function Content() {
 
   return (
     <div className="grid gap-3">
-      {/* Premium: IA da plataforma */}
-      <section className="rounded-xl border border-primary/50 bg-surface-lowest p-6">
+      {/* Premium: IA da plataforma — GEMINI DESATIVADO POR ENQUANTO (PREMIUM_ENABLED em platform.ts) */}
+      {PREMIUM_ENABLED && (<section className="rounded-xl border border-primary/50 bg-surface-lowest p-6">
         <div className="flex flex-wrap items-start gap-4">
           <span className="grid size-11 place-items-center rounded-md bg-primary text-on-primary"><Icon name="star" /></span>
           <div className="min-w-0 flex-1">
@@ -47,18 +47,18 @@ async function Content() {
         )}
         {!status.ok && <p className="mt-4 text-body-s text-on-surface-variant">{status.message}</p>}
         <p className="mt-4 text-body-s text-on-surface-variant">Vídeos que falham não contam na cota. A cota renova todo dia 1º.</p>
-      </section>
+      </section>)}
 
       {/* Econômico: chave do cliente */}
-      <div className="mt-4">
-        <h2 className="text-title-l">Vídeos Econômicos <span className="ml-1 rounded-xs bg-secondary-container px-2 text-label-m text-on-secondary-container">xAI Grok</span></h2>
-        <p className="mt-1 text-body-m text-on-surface-variant">Use sua própria chave do Grok: os vídeos são cobrados na sua conta xAI, dentro do limite que você definir lá. A partir de US$ 0,02 por segundo.</p>
+      <div className={PREMIUM_ENABLED ? 'mt-4' : ''}>
+        <h2 className="text-title-l">{PREMIUM_ENABLED ? 'Vídeos Econômicos' : 'Geração de vídeos'} <span className="ml-1 rounded-xs bg-secondary-container px-2 text-label-m text-on-secondary-container">xAI Grok</span></h2>
+        <p className="mt-1 text-body-m text-on-surface-variant">Use sua própria chave do xAI Grok: os vídeos são cobrados na sua conta xAI, dentro do limite que você definir lá. A partir de US$ 0,02 por segundo.</p>
       </div>
       {providers.filter((p) => types.some((t) => t.type === p.type)).map((p) => <ProviderCard key={p.id} p={p} type={types.find((t) => t.type === p.type)} />)}
       {providers.some((p) => !types.some((t) => t.type === p.type)) && (
         <div className="mt-2 flex items-start gap-3 rounded-lg border border-outline-variant bg-surface-low p-4 text-body-m">
           <Icon name="info" className="mt-0.5 shrink-0 text-tertiary" />
-          <p className="flex-1">Você tem uma chave do Google Gemini cadastrada de antes. Ela não é mais usada: os vídeos premium agora usam a IA da plataforma, sem custo na sua conta Google. Recomendamos removê-la.</p>
+          <p className="flex-1">Você tem uma chave do Google Gemini cadastrada de antes. No momento, os vídeos são gerados só com o xAI Grok, então ela não é usada. Recomendamos removê-la.</p>
         </div>
       )}
       {providers.filter((p) => !types.some((t) => t.type === p.type)).map((p) => <ProviderCard key={p.id} p={p} />)}

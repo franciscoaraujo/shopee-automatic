@@ -116,6 +116,7 @@ export function GenerateForm({ providers, needsKey, categories, initial, presele
   /* -------- 9. prompts (automáticos até o usuário editar) */
   const [edited, setEdited] = useState<Record<string, string>>({});
   const products = useMemo(() => [...selected.values()], [selected]);
+  const hasPremium = providers.some((p) => p.tier === 'premium');
   const overQuota = provider?.tier === 'premium' && !!provider.quota && products.length > provider.quota.remaining;
   const autoPrompt = (p: ProductRow) => buildVideoPrompt(p, options, format, duration);
   const promptOf = (p: ProductRow) => edited[p.itemId] ?? autoPrompt(p);
@@ -137,8 +138,8 @@ export function GenerateForm({ providers, needsKey, categories, initial, presele
     return (
       <div className="rounded-xl border border-outline-variant/70 bg-surface-lowest p-8 text-center">
         <Icon name="tune" size={32} className="mx-auto text-primary" />
-        <p className="mt-3 text-title-m">Nenhum provedor de IA pronto</p>
-        <p className="mt-1 text-body-m text-on-surface-variant">Cadastre e teste a conexão de um provedor antes de gerar vídeos.</p>
+        <p className="mt-3 text-title-m">Cadastre sua chave do xAI Grok</p>
+        <p className="mt-1 text-body-m text-on-surface-variant">Os vídeos são gerados com a sua chave do Grok e cobrados na sua conta xAI. Cadastre e teste a chave para começar.</p>
         <Link href="/app/videos/ia" className="mt-4 inline-block text-label-l text-primary underline">Ir para Configurações de IA</Link>
       </div>
     );
@@ -202,7 +203,7 @@ export function GenerateForm({ providers, needsKey, categories, initial, presele
           )}
         </Step>
 
-        <Step n={2} title="Tipo de vídeo" hint="Premium usa a IA da plataforma (incluída no plano). Econômico usa a sua chave do Grok.">
+        <Step n={2} title={hasPremium ? 'Tipo de vídeo' : 'Provedor de IA'} hint={hasPremium ? 'Premium usa a IA da plataforma (incluída no plano). Econômico usa a sua chave do Grok.' : 'Os vídeos usam a sua chave do xAI Grok e são cobrados na sua conta xAI.'}>
           <div className="grid gap-3 sm:grid-cols-2">
             {providers.map((p) => {
               const on = p.id === providerId;
@@ -213,7 +214,7 @@ export function GenerateForm({ providers, needsKey, categories, initial, presele
                   <input type="radio" name="provider" value={p.id} checked={on} disabled={off} onChange={() => chooseProvider(p.id)} className="mt-1 accent-[var(--md-primary)]" />
                   <span className="min-w-0">
                     <span className="flex flex-wrap items-center gap-2 text-title-s">
-                      {p.tier === 'premium' ? 'Premium' : 'Econômico'}
+                      {p.tier === 'premium' ? 'Premium' : hasPremium ? 'Econômico' : p.name}
                       <span className={`rounded-xs px-1.5 text-label-s ${p.tier === 'premium' ? 'bg-primary text-on-primary' : 'bg-secondary-container text-on-secondary-container'}`}>{p.typeLabel}</span>
                     </span>
                     <span className="mt-1 block text-body-s text-on-surface-variant">
@@ -230,7 +231,7 @@ export function GenerateForm({ providers, needsKey, categories, initial, presele
               <Link href="/app/videos/ia" className="state-layer flex items-start gap-3 rounded-md border border-dashed border-outline p-4">
                 <Icon name="add_circle" className="mt-0.5 text-primary" />
                 <span>
-                  <span className="block text-title-s">Econômico · xAI Grok</span>
+                  <span className="block text-title-s">{hasPremium ? 'Econômico · xAI Grok' : 'Cadastrar chave do xAI Grok'}</span>
                   <span className="block text-body-s text-on-surface-variant">Cadastre sua chave do Grok para gerar vídeos mais baratos, cobrados na sua conta xAI.</span>
                 </span>
               </Link>
