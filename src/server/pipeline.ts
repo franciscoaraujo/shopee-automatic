@@ -82,7 +82,21 @@ export function selectOffers(nodes: Offer[], s: Settings, maxPosts: number, alre
 
 export type RunOutcome = { status: 'skipped'; reason: string } | { status: 'done'; runId: number; found: number; published: number; failures: number; error?: string };
 
-export async function runAccount(account: Account, trigger: 'schedule' | 'manual' = 'schedule'): Promise<RunOutcome> {
+// Integrações externas usadas pela rodada. Em produção são as reais; os testes passam dublês.
+export type RunDeps = {
+  searchOffers: typeof searchOffers;
+  shortLink: typeof shortLink;
+  waState: typeof waState;
+  waSendImage: typeof waSendImage;
+  telegramSendPhoto: typeof telegramSendPhoto;
+  sleep: (ms: number) => Promise<unknown>;
+};
+
+const DEFAULT_DEPS: RunDeps = { searchOffers, shortLink, waState, waSendImage, telegramSendPhoto, sleep };
+
+// overrides: troca só as integrações que o chamador quiser (os testes); o resto usa as reais.
+export async function runAccount(account: Account, trigger: 'schedule' | 'manual' = 'schedule', overrides: Partial<RunDeps> = {}): Promise<RunOutcome> {
+  const deps: RunDeps = { ...DEFAULT_DEPS, ...overrides };
   const started = Date.now();
   const s = await getSettings(account.id);
   const plan = await effectivePlan(account);
@@ -109,7 +123,7 @@ export async function runAccount(account: Account, trigger: 'schedule' | 'manual
 
   if (!s.shopeeAppId || !s.shopeeSecret) return { status: 'skipped', reason: 'Shopee não configurada' };
   if (useWa) {
-    const st = await waState(account.id);
+    const st = await deps.waState(account.id);
     if (st.state !== 'open') useWa = false;
   }
   if (!useWa && !useTg) {
@@ -130,7 +144,7 @@ export async function runAccount(account: Account, trigger: 'schedule' | 'manual
   let nodes: Offer[] = [];
   let searchError: string | null = null;
   try {
-    nodes = await searchOffers(creds, { keyword, sortType: s.sortType, page, limit: 30 });
+    nodes = await deps.searchOffers(creds, { keyword, sortType: s.sortType, page, limit: 30 });
   } catch (err) {
     searchError = describeError(err);
   }
@@ -156,7 +170,7 @@ export async function runAccount(account: Account, trigger: 'schedule' | 'manual
   for (const [i, p] of selected.entries()) {
     let link = p.originUrl;
     try {
-      link = await shortLink(creds, p.originUrl, [s.subIdCampaign, 'autoachados', dateTag, p.itemId].map(sanitize).filter(Boolean).slice(0, 5));
+      link = await deps.shortLink(creds, p.originUrl, [s.subIdCampaign, 'autoachados', dateTag, p.itemId].map(sanitize).filter(Boolean).slice(0, 5));
     } catch {
       // sem link curto, usa o offerLink (já é link de afiliado)
     }
@@ -173,7 +187,7 @@ export async function runAccount(account: Account, trigger: 'schedule' | 'manual
 
     if (useWa) {
       try {
-        const id = await waSendImage(account.id, s.whatsappGroupJid!, p.imageUrl, cap.whatsapp, `oferta-${p.itemId}.jpg`);
+        const id = await deps.waSendImage(account.id, s.whatsappGroupJid!, p.imageUrl, cap.whatsapp, `oferta-${p.itemId}.jpg`);
         await record('whatsapp', true, null, id);
         anyOk = true;
       } catch (err) {
@@ -183,7 +197,7 @@ export async function runAccount(account: Account, trigger: 'schedule' | 'manual
     }
     if (useTg) {
       try {
-        const id = await telegramSendPhoto(s.telegramBotToken!, s.telegramChatId!, p.imageUrl, cap.telegram);
+        const id = await deps.telegramSendPhoto(s.telegramBotToken!, s.telegramChatId!, p.imageUrl, cap.telegram);
         await record('telegram', true, null, id);
         anyOk = true;
       } catch (err) {
@@ -199,7 +213,7 @@ export async function runAccount(account: Account, trigger: 'schedule' | 'manual
       );
     }
     // Espaça as mensagens para não parecer spam
-    if (i < selected.length - 1) await sleep(useWa ? 8000 : 3000);
+    if (i < selected.length - 1) await deps.sleep(useWa ? 8000 : 3000);
   }
 
   await q('UPDATE runs SET duration_ms = $2 WHERE id = $1', [runId, Date.now() - started]);
