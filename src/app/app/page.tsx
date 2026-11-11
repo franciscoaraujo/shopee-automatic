@@ -13,6 +13,7 @@ import { requireSession } from '@/server/session';
 import { getSettings, readiness } from '@/server/settings';
 import { SERIES } from '@/lib/channels';
 import { RunNow, SeriesChart } from './charts';
+import { LiveRefresh } from './live';
 
 const brl = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v);
 const pct = (v: number) => `${Math.round(v * 100)}%`;
@@ -193,6 +194,7 @@ async function Dashboard({ searchParams }: { searchParams: PageProps<'/app'>['se
             {r === range && <Icon name="check" size={18} />} {RANGES[r].label}
           </Link>
         ))}
+        <div className="ml-auto"><LiveRefresh renderedAt={new Date().toISOString()} /></div>
       </div>
 
       {/* KPIs */}

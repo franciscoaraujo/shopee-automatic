@@ -113,7 +113,7 @@ export async function workerHealth() {
   return { ok: age < 2 * 60_000, lastSeen: new Date(row.updated_at).toISOString() };
 }
 
-export const OFFERS_PER_PAGE = 12;
+export const OFFERS_PER_PAGE = 10;
 
 export type OfferRow = {
   key: string; itemId: string; productName: string; price: number; commissionRate: number; commission: number;
