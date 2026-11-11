@@ -63,7 +63,7 @@ O Gemini Omni Flash **não está disponível no plano gratuito** da Gemini API (
 
 Como o sistema garante isso:
 - **No cadastro:** o cliente confirma que o projeto da chave tem faturamento ativo. A confirmação é obrigatória e verificada no servidor, e a data fica registrada no provedor.
-- **Na prática:** o teste de conexão passa até no plano gratuito, porque listar modelos é grátis. Se uma geração for recusada por cota () mesmo depois das novas tentativas, o provedor é marcado com **"Plano pago necessário"** e sai da tela de geração até o cliente clicar em **Testar conexão** de novo.
+- **Na prática:** o teste de conexão passa até no plano gratuito, porque listar modelos é grátis. Se uma geração for recusada por cota (`RESOURCE_EXHAUSTED`) mesmo depois das novas tentativas, o provedor é marcado com **"Plano pago necessário"** e sai da tela de geração até o cliente clicar em **Testar conexão** de novo.
 
 **Configuração:** cada cliente cadastra a própria chave em **Vídeos → Configurações de IA**. A chave é
 criptografada (AES-256-GCM com `APP_MASTER_KEY`, AAD amarrado à conta e ao provedor). Ela nunca volta
