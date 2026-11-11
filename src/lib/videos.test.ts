@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { buildVideoPrompt, narrationScript } from './video-prompt';
 import {
-  canTransition, isReviewable, originalPriceOf, TRANSITIONS, validateRequest, VIDEO_STATUSES,
+  canTransition, isReviewable, originalPriceOf, STYLES, TRANSITIONS, validateRequest, VIDEO_STATUSES,
   type GenerationOptions, type ModelCapabilities, type ProductSnapshot,
 } from './videos';
 
@@ -72,36 +72,42 @@ const product: ProductSnapshot = {
 const opts: GenerationOptions = { style: 'promo', narration: 'female', language: 'pt-BR', voiceInstructions: 'tom animado', extraInstructions: 'fundo claro', resolution: '720p' };
 
 describe('prompt automático', () => {
+  // produto COM preço e desconto cadastrados: nada disso pode ir para o vídeo
   const prompt = buildVideoPrompt(product, opts, '9:16', 10);
-  it('usa os dados do produto', () => {
-    expect(prompt).toContain('"Garrafa Térmica 1L"');
+  it('identifica o produto', () => {
+    expect(prompt).toContain('identifique o produto "Garrafa Térmica 1L"');
     expect(prompt).toContain('vertical');
-    expect(prompt).toMatch(/R\$\s?49,90/);
-    expect(prompt).toMatch(/R\$\s?99,80 \(50% de desconto\)/);
-    expect(prompt).toContain('Narração em voz feminina, clara e animada, em Português (Brasil), dizendo exatamente: "Olha esse achado: Garrafa Térmica 1L! De R$');
+    expect(prompt).toContain('Narração em voz feminina, clara, em Português (Brasil), dizendo exatamente: "Conheça: Garrafa Térmica 1L."');
     expect(prompt).toContain('Instruções de voz: tom animado.');
     expect(prompt).toContain('Instruções adicionais:\nfundo claro');
   });
-  it('sempre pede trilha sonora; "Sem narração" tira só a voz', () => {
-    expect(prompt).toContain('Trilha sonora: música de fundo animada');
-    const none = buildVideoPrompt(product, { ...opts, narration: 'none' }, '9:16', 10);
-    expect(none).toContain('Trilha sonora: música de fundo animada');
-    expect(none).toContain('Sem voz: nenhuma narração falada.');
-  });
-  it('fala pronta curta, sem o título inteiro da Shopee', () => {
-    const long = { ...product, name: 'Kit 10 Embalagens PVC Organizadora Roupa, Cama, Mesa e Banho Armário Cômoda [ENVIO IMEDIATO]' };
-    expect(narrationScript(long, 'pt-BR')).toMatch(/^Olha esse achado: Kit 10 Embalagens PVC Organizadora Roupa! De R\$\s?99,80 por apenas R\$\s?49,90\. Corre, que é por tempo limitado!$/);
-    expect(narrationScript({ ...product, originalPrice: null }, 'en-US')).toMatch(/^Check out this deal: Garrafa Térmica 1L! Only R\$\s?49,90\. Grab it while it lasts!$/);
+  it('não leva preço, valor, desconto nem promoção', () => {
+    for (const style of Object.keys(STYLES) as (keyof typeof STYLES)[]) {
+      for (const narration of ['none', 'female', 'male', 'text', 'narrated_subtitles'] as const) {
+        for (const language of ['pt-BR', 'en-US', 'es-ES'] as const) {
+          const p = buildVideoPrompt(product, { ...opts, style, narration, language, extraInstructions: '' }, '9:16', 10);
+          // tudo, exceto a própria linha que proíbe preços
+          const semRegra = p.split('\n').filter((l) => !l.startsWith('Não mostre nem mencione preços')).join('\n');
+          expect(semRegra).not.toMatch(/R\$|49,90|99,80|50%|preço|desconto|promo|oferta|tempo limitado|deal|Corre/i);
+        }
+      }
+    }
+    expect(prompt).toContain('Não mostre nem mencione preços, valores, moedas, descontos, promoções');
   });
   it('proíbe inventar características e alterar o produto', () => {
     expect(prompt).toContain('Não invente características, funcionalidades ou benefícios');
     expect(prompt).toContain('Não represente o produto de maneira diferente de suas imagens de referência.');
   });
-  it('omite o preço original quando não há desconto', () => {
-    const p = buildVideoPrompt({ ...product, originalPrice: null, discountRate: null }, { ...opts, narration: 'none', extraInstructions: '' }, '16:9', 8);
-    expect(p).not.toContain('Preço original');
-    expect(p).toContain('horizontal');
-    expect(p).toContain('Sem voz: nenhuma narração falada.');
-    expect(p).not.toContain('Instruções adicionais');
+  it('sempre pede trilha sonora; "Sem narração" tira só a voz', () => {
+    expect(prompt).toContain('Trilha sonora: música de fundo moderna');
+    const none = buildVideoPrompt(product, { ...opts, narration: 'none' }, '9:16', 10);
+    expect(none).toContain('Trilha sonora: música de fundo moderna');
+    expect(none).toContain('Sem voz: nenhuma narração falada.');
+  });
+  it('fala curta, sem o título inteiro da Shopee', () => {
+    const long = { ...product, name: 'Kit 10 Embalagens PVC Organizadora Roupa, Cama, Mesa e Banho Armário Cômoda [ENVIO IMEDIATO]' };
+    expect(narrationScript(long, 'pt-BR')).toBe('Conheça: Kit 10 Embalagens PVC Organizadora Roupa.');
+    expect(narrationScript(product, 'en-US')).toBe('Introducing: Garrafa Térmica 1L.');
+    expect(narrationScript(product, 'es-ES')).toBe('Conoce: Garrafa Térmica 1L.');
   });
 });

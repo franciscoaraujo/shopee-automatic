@@ -103,7 +103,9 @@ services:
   storage:
     image: chrislusf/seaweedfs:4.53
     restart: unless-stopped
-    command: ["server", "-dir=/data", "-s3", "-s3.port=8333", "-ip.bind=0.0.0.0"]
+    # volumeSizeLimitMB: o padrão (30 GB por volume) não cabe em discos de VPS — cada bucket
+    # precisa de 7 volumes; com 512 MB, um disco de 10 GB já comporta 19 (testado).
+    command: ["server", "-dir=/data", "-s3", "-s3.port=8333", "-ip.bind=0.0.0.0", "-master.volumeSizeLimitMB=512"]
     environment:
       AWS_ACCESS_KEY_ID: ${S3_ACCESS_KEY_ID:-}
       AWS_SECRET_ACCESS_KEY: ${S3_SECRET_ACCESS_KEY:-}

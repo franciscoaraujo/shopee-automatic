@@ -68,10 +68,10 @@ export const PRESET_DURATIONS = [10, 15, 20, 30] as const;
 
 export const STYLES = {
   showcase: { label: 'Apresentação de produto', prompt: 'apresentação de produto: o produto em destaque, ângulos variados e fundo limpo' },
-  promo: { label: 'Comercial promocional', prompt: 'comercial promocional: ritmo animado, cortes rápidos e destaque para o preço' },
+  promo: { label: 'Comercial dinâmico', prompt: 'comercial dinâmico: ritmo animado e cortes rápidos mostrando o produto' },
   demo: { label: 'Demonstração de funcionalidades', prompt: 'demonstração: mostre o produto em uso, apenas com as funções descritas' },
   review: { label: 'Review narrado', prompt: 'review narrado: tom de recomendação honesta, como alguém apresentando o produto' },
-  benefits: { label: 'Oferta e benefícios', prompt: 'oferta e benefícios: liste os benefícios descritos e encerre com o preço da oferta' },
+  benefits: { label: 'Benefícios do produto', prompt: 'benefícios: mostre o produto e apenas os benefícios que aparecem no nome e nas imagens' },
 } as const;
 export type VideoStyle = keyof typeof STYLES;
 

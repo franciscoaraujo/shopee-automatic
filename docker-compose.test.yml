@@ -23,7 +23,8 @@ services:
 
   test-storage:
     image: chrislusf/seaweedfs:4.53
-    command: ["server", "-dir=/data", "-s3", "-s3.port=8333", "-ip.bind=0.0.0.0"]
+    # volumes pequenos: o /data em tmpfs não comporta volumes de 30 GB (padrão)
+    command: ["server", "-dir=/data", "-s3", "-s3.port=8333", "-ip.bind=0.0.0.0", "-master.volumeSizeLimitMB=100"]
     environment:
       AWS_ACCESS_KEY_ID: testkey
       AWS_SECRET_ACCESS_KEY: testsecret-0123456789

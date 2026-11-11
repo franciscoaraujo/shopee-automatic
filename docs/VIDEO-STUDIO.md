@@ -127,6 +127,8 @@ TEST_REAL_PROVIDERS=1 TEST_GEMINI_API_KEY=... TEST_XAI_API_KEY=... npm run test:
 ## Limitações conhecidas
 
 - **Duração:** 20 e 30 s não estão disponíveis, porque os dois provedores geram no máximo 15 s por chamada. Juntar clipes ou usar a extensão de vídeo fica para uma próxima versão.
-- **Dados do produto:** a API de afiliados da Shopee não fornece descrição, imagens adicionais nem nome de categoria. O prompt usa só nome, preço e foto, e a "categoria" é a palavra-chave da busca. O preço original aparece só em produtos publicados depois desta versão.
+- **Dados do produto:** a API de afiliados da Shopee não fornece descrição, imagens adicionais nem nome de categoria. O prompt usa só o nome e a foto, e a "categoria" é a palavra-chave da busca.
+- **Sem preço nem promoção no vídeo (regra de negócio):** o vídeo apenas identifica o produto. O prompt não inclui preço, desconto, oferta nem urgência e proíbe o modelo de mostrá-los em imagem, texto ou voz (`src/lib/video-prompt.ts`, com teste que varre todas as combinações de estilo, narração e idioma). O preço fica só no registro interno da galeria. A "nova versão" de vídeos antigos refaz o prompt automático para tirar os valores. Como é uma instrução ao modelo, um vídeo raro ainda pode trazer valores inventados; a avaliação humana existe para barrar esses casos.
+- **Armazenamento (SeaweedFS):** o compose usa volumes de 512 MB (`-master.volumeSizeLimitMB=512`). O padrão de 30 GB por volume impede a gravação em discos menores que ~210 GB, porque cada bucket precisa de 7 volumes.
 - **Áudio no Gemini:** em português, o resultado pode variar, porque só o inglês foi avaliado oficialmente.
 - **Publicação:** não existe nesta versão. A arquitetura permite acrescentar uma etapa autorizada depois de `APPROVED`.

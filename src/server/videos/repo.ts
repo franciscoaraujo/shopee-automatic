@@ -517,8 +517,11 @@ export async function newVersion(accountId: string, userId: string, projectId: s
   if (!providerId) throw new VideoError('O provedor usado foi removido. Gere um vídeo novo pela tela "Gerar vídeos".');
   // Retrato atualizado do produto (preço pode ter mudado); se saiu do histórico, mantém o anterior
   const fresh = (await getProducts(accountId, [p.productId]))[0];
-  const base = fresh ? buildVideoPrompt(fresh, p.options, p.format, p.duration) : null;
-  const prompt = (base && p.prompt === buildVideoPrompt(p.product, p.options, p.format, p.duration) ? base : p.prompt)
+  const base = buildVideoPrompt(fresh ?? p.product, p.options, p.format, p.duration);
+  // Prompt automático (não editado) é refeito com o modelo atual. Prompts do modelo antigo,
+  // que levavam preço e promoção ("Preço atual:"), também são refeitos: vídeos não mostram valores.
+  const auto = p.prompt === buildVideoPrompt(p.product, p.options, p.format, p.duration) || /\nPreço atual:\n/.test(p.prompt);
+  const prompt = (auto ? base : p.prompt)
     + (adjustments ? `\n\nAjustes solicitados na avaliação anterior:\n${adjustments}` : '');
   const out = await createProjects(accountId, userId, {
     providerId, model: p.model, format: p.format, duration: p.duration, options: p.options,
