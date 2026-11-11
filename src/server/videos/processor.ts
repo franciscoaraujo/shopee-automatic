@@ -97,6 +97,18 @@ export async function fetchReferenceImage(url: string | null, doFetch: typeof fe
   }
 }
 
+// Problema definitivo na conta do provedor (ex.: sem plano pago): o provedor fica com status
+// "error" e some da tela de geração, para não gerar novos vídeos que vão falhar e consumir o
+// limite diário. Volta ao normal quando o cliente clica em "Testar conexão".
+async function flagProviderAccount(job: Job, issue: string) {
+  if (!job.provider_id) return;
+  await q(
+    `UPDATE ai_providers SET connection_status = 'error', connection_message = $3, updated_at = now() WHERE account_id = $1 AND id = $2`,
+    [job.account_id, job.provider_id, issue.slice(0, 500)]
+  );
+  await logEvent({ accountId: job.account_id, projectId: job.id, provider: job.provider_type, event: 'provider.account_issue', error: issue });
+}
+
 async function providerFor(job: Job): Promise<VideoGenerationProvider | string> {
   if (!job.provider_id) return 'O provedor de IA usado neste vídeo foi removido.';
   const p = await getProviderWithKey(job.account_id, job.provider_id);
@@ -155,6 +167,7 @@ async function poll(job: Job, provider: VideoGenerationProvider) {
     if (st.retryable && job.attempts + 1 < MAX_ATTEMPTS) {
       return move(job, 'PENDING', { attempts: job.attempts + 1, provider_job_id: null, error_message: st.error.slice(0, 1000), next_in_sec: backoffSec(job.attempts + 1) });
     }
+    if (st.accountIssue) await flagProviderAccount(job, st.accountIssue);
     return fail(job, st.error);
   }
   await logEvent({ accountId: job.account_id, projectId: job.id, provider: job.provider_type, event: 'generation.completed', response: st.meta, ms: Date.now() - t0 });

@@ -23,7 +23,9 @@ export type GenerateSubmission = { jobId: string; requestMeta: Record<string, un
 export type GenerationStatus =
   | { state: 'running'; progress: number | null; meta?: Record<string, unknown> }
   | { state: 'succeeded'; result: GenerationResult; meta?: Record<string, unknown> }
-  | { state: 'failed'; error: string; retryable: boolean; meta?: Record<string, unknown> };
+  // accountIssue: a falha é da CONTA do provedor (ex.: sem plano pago), não deste vídeo.
+  // Quando a falha é definitiva, o provedor é marcado com esse problema e sai da tela de geração.
+  | { state: 'failed'; error: string; retryable: boolean; accountIssue?: string; meta?: Record<string, unknown> };
 
 // Onde está o vídeo pronto. downloadResult transforma isto em bytes.
 export type GenerationResult =
@@ -48,6 +50,7 @@ export type ProviderDefinition = {
   label: string;
   docsUrl: string;
   keyHelp: string;                       // onde obter a chave
+  requirement?: { title: string; text: string; confirm: string }; // pré-requisito da conta, confirmado no cadastro
   keyPattern?: RegExp;                   // validação leve do formato da chave
   capabilities: ProviderCapabilities;    // capacidades documentadas (antes de validar a chave)
   create: (cfg: ProviderConfig) => VideoGenerationProvider;

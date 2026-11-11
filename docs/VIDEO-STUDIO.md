@@ -57,6 +57,14 @@ Fila, estados, armazenamento, telas e avaliação não mudam. Se o provedor não
 
 Os modelos Veo 3.1 Preview foram desligados na Gemini API em 22/10/2026. Por isso o adaptador usa o Omni Flash.
 
+### Gemini exige plano pago da Gemini API
+
+O Gemini Omni Flash **não está disponível no plano gratuito** da Gemini API (a tabela de preços indica "Not available"). O cliente precisa de um projeto com **faturamento ativo** no AI Studio (Billing, pré-pago a partir de US$ 5). A assinatura **Google AI Pro/Ultra** (o app Gemini) **não libera a API sozinha**: os benefícios do plano valem só na interface do AI Studio. O que ela dá para a API são créditos mensais do Google Developer Program, que passam a valer depois de ativar o faturamento no projeto.
+
+Como o sistema garante isso:
+- **No cadastro:** o cliente confirma que o projeto da chave tem faturamento ativo. A confirmação é obrigatória e verificada no servidor, e a data fica registrada no provedor.
+- **Na prática:** o teste de conexão passa até no plano gratuito, porque listar modelos é grátis. Se uma geração for recusada por cota () mesmo depois das novas tentativas, o provedor é marcado com **"Plano pago necessário"** e sai da tela de geração até o cliente clicar em **Testar conexão** de novo.
+
 **Configuração:** cada cliente cadastra a própria chave em **Vídeos → Configurações de IA**. A chave é
 criptografada (AES-256-GCM com `APP_MASTER_KEY`, AAD amarrado à conta e ao provedor). Ela nunca volta
 ao navegador, aos logs nem às respostas: a tela mostra só os 4 últimos caracteres.

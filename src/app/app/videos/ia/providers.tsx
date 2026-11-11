@@ -12,7 +12,10 @@ import {
   type ActionResult,
 } from '../actions';
 
-export type ProviderType = { type: string; label: string; docsUrl: string; keyHelp: string; capabilities: ProviderCapabilities };
+export type ProviderType = {
+  type: string; label: string; docsUrl: string; keyHelp: string; capabilities: ProviderCapabilities;
+  requirement?: { title: string; text: string; confirm: string };
+};
 
 const dt = new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'America/Sao_Paulo' });
 
@@ -68,6 +71,17 @@ export function AddProvider({ types }: { types: ProviderType[] }) {
           <span>{def.keyHelp} <a href={def.docsUrl} target="_blank" rel="noopener noreferrer" className="text-primary underline">Documentação</a></span>
         </p>
       )}
+      {def?.requirement && (
+        <div className="rounded-md border border-primary/30 bg-primary/5 p-4">
+          <p className="flex items-center gap-2 text-title-s"><Icon name="lock" size={18} className="text-primary" /> {def.requirement.title}</p>
+          <p className="mt-1 text-body-s text-on-surface-variant">{def.requirement.text}</p>
+          <label className="mt-3 flex cursor-pointer items-start gap-3 text-body-m">
+            <input type="checkbox" name="paidPlan" required className="mt-0.5 size-5 accent-[var(--md-primary)]" />
+            <span>{def.requirement.confirm}</span>
+          </label>
+          {res?.errors?.paidPlan && <p className="mt-2 text-body-s text-error" role="alert">{res.errors.paidPlan}</p>}
+        </div>
+      )}
       <div className="flex flex-wrap items-center gap-4">
         <Button type="submit" icon="add" disabled={pending}>{pending ? 'Salvando e testando…' : 'Adicionar e testar conexão'}</Button>
         <Feedback r={res} />
@@ -106,7 +120,10 @@ export function ProviderCard({ p, type }: { p: ProviderView; type?: ProviderType
             {p.isDefault && <span className="inline-flex h-6 items-center gap-1 rounded-xs bg-primary px-2 text-label-s text-on-primary"><Icon name="star" size={14} /> Padrão</span>}
             {!p.enabled && <span className="inline-flex h-6 items-center rounded-xs bg-surface-high px-2 text-label-s text-on-surface-variant">Desativado</span>}
           </h3>
-          <p className="mt-1 text-body-m text-on-surface-variant">{p.typeLabel} · chave {p.keyHint}</p>
+          <p className="mt-1 text-body-m text-on-surface-variant">
+            {p.typeLabel} · chave {p.keyHint}
+            {typeof p.settings.paidPlanConfirmedAt === 'string' && ` · plano pago confirmado em ${dt.format(new Date(p.settings.paidPlanConfirmedAt))}`}
+          </p>
         </div>
         <span className={`inline-flex h-7 items-center gap-1.5 rounded-sm px-2.5 text-label-m ${st.cls}`}><Icon name={st.icon} size={16} /> {st.label}</span>
       </header>

@@ -47,7 +47,7 @@ function makeMp4(): Buffer {
 }
 
 // Comportamento do dublê, controlado por teste
-const fake: { submit: 'ok' | 'retryable' | 'fatal'; polls: number; mp4: Buffer } = { submit: 'ok', polls: 0, mp4: Buffer.alloc(0) };
+const fake: { submit: 'ok' | 'retryable' | 'fatal'; quota: boolean; polls: number; mp4: Buffer } = { submit: 'ok', quota: false, polls: 0, mp4: Buffer.alloc(0) };
 
 suite('Shopee Video Studio (integração)', () => {
   beforeAll(async () => {
@@ -80,7 +80,9 @@ suite('Shopee Video Studio (integração)', () => {
           if (fake.submit === 'fatal') throw new ProviderError('Prompt recusado', false, 400);
           return { jobId: `job-${randomUUID()}`, requestMeta: {} };
         },
-        getGenerationStatus: async () => (++fake.polls % 2 === 1
+        getGenerationStatus: async () => fake.quota
+          ? { state: 'failed', error: 'Sem cota', retryable: true, accountIssue: 'Plano pago necessário (teste)' }
+          : (++fake.polls % 2 === 1
           ? { state: 'running', progress: 50 }
           : { state: 'succeeded', result: { kind: 'inline', data: fake.mp4.toString('base64'), mimeType: 'video/mp4' } }),
         downloadResult: async (r) => Buffer.from((r as { data: string }).data, 'base64'),
@@ -244,6 +246,25 @@ suite('Shopee Video Studio (integração)', () => {
     await runQueue(1);
     expect(await m.repo.getProject(A, f.ids[0])).toMatchObject({ status: 'FAILED', attempts: 0, errorMessage: 'Prompt recusado' });
     fake.submit = 'ok';
+  });
+
+  itS3('falta de plano pago marca o provedor e bloqueia novas gerações até testar de novo', async () => {
+    await m.repo.updateProvider(A, providerId, { settings: { paidPlanConfirmedAt: '2026-11-11T00:00:00.000Z' } });
+    await m.repo.updateProvider(A, providerId, { name: 'Teste', settings: { defaultResolution: '720p' } });
+    expect((await m.repo.getProvider(A, providerId))!.settings).toEqual({ paidPlanConfirmedAt: '2026-11-11T00:00:00.000Z', defaultResolution: '720p' });
+
+    // libera uma vaga no limite diário (6 nos testes): remove um vídeo que já falhou
+    await m.db.q("DELETE FROM video_projects WHERE id = (SELECT id FROM video_projects WHERE status = 'FAILED' ORDER BY created_at LIMIT 1)");
+    fake.quota = true;
+    const q1 = await create(randomUUID(), ['222']);
+    await runQueue(4);                                                                     // envia, falha, tenta de novo, falha de vez
+    expect(await m.repo.getProject(A, q1.ids[0])).toMatchObject({ status: 'FAILED', errorMessage: 'Sem cota' });
+    const prov = (await m.repo.getProvider(A, providerId))!;
+    expect(prov).toMatchObject({ status: 'error', message: 'Plano pago necessário (teste)' });
+    await expect(create(randomUUID(), ['222'])).rejects.toThrow(/Teste a conexão/);       // fora da geração
+    fake.quota = false;
+    await m.repo.saveValidation(A, providerId, { ok: true, message: 'ok', models: prov.models }); // = "Testar conexão"
+    expect((await m.repo.getProvider(A, providerId))!.status).toBe('ok');
   });
 
   itS3('limita gerações em 24 horas', async () => {

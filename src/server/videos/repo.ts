@@ -128,7 +128,13 @@ export async function updateProvider(accountId: string, id: string, input: { nam
     if (input.defaultModel && !cur.models.some((m) => m.id === input.defaultModel)) throw new VideoError('Modelo indisponível. Teste a conexão para atualizar a lista.', 'defaultModel');
     add('default_model', input.defaultModel || null);
   }
-  if (input.settings !== undefined) add('settings', JSON.stringify(input.settings));
+  if (input.settings !== undefined) {
+    // Mescla (não apaga chaves como paidPlanConfirmedAt); valor vazio remove a chave
+    const set = Object.fromEntries(Object.entries(input.settings).filter(([, v]) => v !== undefined && v !== ''));
+    const drop = Object.keys(input.settings).filter((k) => input.settings![k] === undefined || input.settings![k] === '');
+    params.push(JSON.stringify(set), drop);
+    sets.push(`settings = (settings - $${params.length}::text[]) || $${params.length - 1}::jsonb`);
+  }
   await q(`UPDATE ai_providers SET ${sets.join(', ')} WHERE account_id = $1 AND id = $2`, params);
   await logEvent({ accountId, provider: cur.type, event: input.apiKey ? 'provider.key_replaced' : 'provider.updated', request: { providerId: id } });
 }

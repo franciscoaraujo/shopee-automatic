@@ -169,6 +169,7 @@ export class GeminiVideoProvider implements VideoGenerationProvider {
         if (code === 'RESOURCE_EXHAUSTED') {
           return {
             state: 'failed', retryable: true, meta: { ...meta, code },
+            accountIssue: 'Plano pago necessário: o Gemini recusou a geração por falta de cota (RESOURCE_EXHAUSTED). Ative o faturamento no projeto da chave (AI Studio → Billing) e clique em "Testar conexão".',
             error: 'Cota da Gemini API esgotada (RESOURCE_EXHAUSTED). O Gemini Omni Flash não está disponível no plano gratuito: ative o faturamento no projeto da chave (AI Studio → Billing) ou aguarde a renovação da cota.',
           };
         }

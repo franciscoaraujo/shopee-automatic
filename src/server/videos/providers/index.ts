@@ -11,7 +11,13 @@ export const PROVIDERS: Record<string, ProviderDefinition> = {
     type: 'gemini',
     label: 'Google Gemini',
     docsUrl: 'https://aistudio.google.com/docs/omni',
-    keyHelp: 'Crie a chave em aistudio.google.com → Get API key. A geração de vídeo exige um projeto com faturamento ativo.',
+    keyHelp: 'Crie a chave em aistudio.google.com → Get API key, no projeto que tem o faturamento ativo.',
+    requirement: {
+      title: 'Requer plano pago da Gemini API',
+      text: 'A geração de vídeo (Gemini Omni Flash) não existe no plano gratuito. O projeto da chave precisa ter faturamento ativo no AI Studio (Billing). '
+        + 'A assinatura Google AI Pro/Ultra não libera a API sozinha: ela dá créditos mensais, que passam a valer para a API depois de ativar o faturamento e vincular os créditos pelo Google Developer Program.',
+      confirm: 'Confirmo que o projeto desta chave tem faturamento ativo (plano pago da Gemini API).',
+    },
     // Formatos aceitos: clássico "AIza…" e o novo "AQ.…" (com ponto)
     keyPattern: /^[A-Za-z0-9._-]{30,200}$/,
     capabilities: GEMINI_CAPABILITIES,
@@ -28,7 +34,8 @@ export const PROVIDERS: Record<string, ProviderDefinition> = {
   },
 };
 
-export const providerTypes = () => Object.values(PROVIDERS).map(({ type, label, docsUrl, keyHelp, capabilities }) => ({ type, label, docsUrl, keyHelp, capabilities }));
+export const providerTypes = () =>
+  Object.values(PROVIDERS).map(({ type, label, docsUrl, keyHelp, requirement, capabilities }) => ({ type, label, docsUrl, keyHelp, requirement, capabilities }));
 
 export function getProviderDefinition(type: string): ProviderDefinition | null {
   return Object.prototype.hasOwnProperty.call(PROVIDERS, type) ? PROVIDERS[type] : null;

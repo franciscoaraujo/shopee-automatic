@@ -10,7 +10,7 @@ import {
 } from '@/lib/videos';
 import { isOperational } from '@/server/accounts';
 import { requireSession } from '@/server/session';
-import { createProvider as createAdapter } from '@/server/videos/providers';
+import { createProvider as createAdapter, getProviderDefinition } from '@/server/videos/providers';
 import {
   addReview, createProjects, createProvider, deleteProject, deleteProvider, getProviderWithKey, listProducts, logEvent, newVersion,
   saveValidation, setDefaultProvider, setProviderEnabled, updateProvider, VideoError, type ProductRow,
@@ -34,7 +34,11 @@ export async function createProviderAction(fd: FormData): Promise<ActionResult> 
   if (!rateLimit(`ai-provider:${account.id}`, 20, 10 * 60_000)) return { ok: false, message: 'Muitas alterações seguidas. Aguarde alguns minutos.' };
   try {
     const type = String(fd.get('type') ?? '');
-    const id = await createProvider(account.id, { type, name: String(fd.get('name') ?? ''), apiKey: String(fd.get('apiKey') ?? '') });
+    // Pré-requisito da conta do provedor (ex.: plano pago da Gemini API): confirmação obrigatória
+    const requirement = getProviderDefinition(type)?.requirement;
+    if (requirement && fd.get('paidPlan') !== 'on') throw new VideoError(`Marque a confirmação: ${requirement.title}.`, 'paidPlan');
+    const settings = requirement ? { paidPlanConfirmedAt: new Date().toISOString() } : {};
+    const id = await createProvider(account.id, { type, name: String(fd.get('name') ?? ''), apiKey: String(fd.get('apiKey') ?? ''), settings });
     const test = await testProvider(account.id, id);
     refresh();
     return { ok: true, warning: !test.ok, id, message: test.ok ? `Provedor salvo. ${test.message}` : `Provedor salvo, mas a conexão falhou: ${test.message}` };

@@ -103,7 +103,7 @@ describe('GeminiVideoProvider', () => {
     const real = { id: 'i', status: 'failed', object: 'interaction', errors: [{ message: 'There was a problem processing your request. You will only be charged for tokens successfully generated.', code: 'RESOURCE_EXHAUSTED' }] };
     const other = { id: 'i', status: 'failed', errors: [{ message: 'Something else', code: 'INTERNAL' }] };
     const p = new GeminiVideoProvider({ apiKey: KEY_G, settings: {} }, fakeFetch([json(real), json(other)]).fn);
-    expect(await p.getGenerationStatus('i')).toMatchObject({ state: 'failed', retryable: true, error: expect.stringMatching(/plano gratuito.*faturamento/) });
+    expect(await p.getGenerationStatus('i')).toMatchObject({ state: 'failed', retryable: true, error: expect.stringMatching(/plano gratuito.*faturamento/), accountIssue: expect.stringMatching(/^Plano pago necessário/) });
     expect(await p.getGenerationStatus('i')).toMatchObject({ state: 'failed', error: 'Something else (INTERNAL)' });
   });
 
