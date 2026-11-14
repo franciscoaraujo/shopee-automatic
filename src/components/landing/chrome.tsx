@@ -11,13 +11,14 @@ const NAV = [
   { href: '/#duvidas', label: 'Dúvidas' },
 ];
 
-export function Logo({ className = '' }: { className?: string }) {
+// compact: só o símbolo (ex.: topo do navigation rail do painel)
+export function Logo({ className = '', compact = false }: { className?: string; compact?: boolean }) {
   return (
     <Link href="/" className={`flex items-center gap-2.5 font-display text-[1.2rem] font-bold tracking-tight ${className}`} aria-label={`${site.name}, início`}>
-      <span className="grid size-8 place-items-center rounded-[10px] bg-primary text-on-primary">
-        <Icon name="bolt" size={20} />
+      <span className={`grid place-items-center bg-primary text-on-primary ${compact ? 'size-10 rounded-xl' : 'size-8 rounded-[10px]'}`}>
+        <Icon name="bolt" size={compact ? 24 : 20} />
       </span>
-      {site.name}
+      {!compact && site.name}
     </Link>
   );
 }
