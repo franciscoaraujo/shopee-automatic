@@ -105,7 +105,9 @@ async function Dashboard({ searchParams }: { searchParams: PageProps<'/app'>['se
   const running = isOperational(account);
   const k = s.kpis;
   // Pode rodar se a Shopee está configurada e ao menos um canal consegue publicar
-  const waUsable = settings.whatsappEnabled && wa.state === 'open' && !!settings.whatsappGroupJid;
+  const waUsable = settings.whatsappEnabled && wa.state === 'open' && settings.whatsappGroups.length > 0;
+  const waActive = settings.whatsappGroups.slice(0, plan.maxWaGroups);
+  const waFailingNames = waActive.filter((g) => failing.whatsappGroups.includes(g.jid)).map((g) => g.name || 'grupo');
   const tgUsable = settings.telegramEnabled && ready.items[2].ok;
   const canRun = running && ready.items[0].ok && (waUsable || tgUsable);
 
@@ -135,11 +137,13 @@ async function Dashboard({ searchParams }: { searchParams: PageProps<'/app'>['se
     },
     {
       label: 'WhatsApp',
-      status: !settings.whatsappEnabled ? 'off' : wa.state !== 'open' ? 'critical' : !settings.whatsappGroupJid || failing.whatsapp ? 'warning' : 'good',
+      status: !settings.whatsappEnabled ? 'off' : wa.state !== 'open' ? 'critical' : !waActive.length || waFailingNames.length ? 'warning' : 'good',
       detail: !settings.whatsappEnabled ? 'Desativado' : wa.state !== 'open' ? 'Desconectado — leia o QR Code'
-        : !settings.whatsappGroupJid ? 'Escolha o grupo'
-        : failing.whatsapp ? 'Envios falhando — seguimos tentando automaticamente'
-        : settings.whatsappGroupName ? `“${settings.whatsappGroupName}”` : 'Conectado',
+        : !waActive.length ? 'Escolha o grupo'
+        // Falha seguida num grupo costuma ser o número fora do grupo: o cliente consegue resolver
+        : waFailingNames.length === 1 ? `Envios falhando em “${waFailingNames[0]}” — confira se o número ainda está no grupo`
+        : waFailingNames.length > 1 ? `Envios falhando em ${waFailingNames.length} grupos — confira se o número ainda está neles`
+        : waActive.length === 1 ? `“${waActive[0].name || 'grupo'}”` : `${waActive.length} grupos`,
       href: '/app/configuracoes#whatsapp',
     },
     {

@@ -5,7 +5,7 @@
 // chega ao site, ao painel do cliente e ao worker em até 30 s, sem reiniciar nada.
 // Se o banco falhar, valem os planos padrão do código (o site não cai).
 import {
-  DEFAULT_PLANS, MAX_PER_RUN, TRIAL_PLAN, bestOffer, discounted, findPlan, formatPrice,
+  DEFAULT_PLANS, MAX_PER_RUN, MAX_WA_GROUPS, TRIAL_PLAN, bestOffer, discounted, findPlan, formatPrice,
   type Plan, type Promotion, type SchedulePolicy,
 } from '@/lib/plans';
 import { one, q, type tx } from './db';
@@ -39,7 +39,7 @@ const clamp = (n: unknown, min: number, max: number, dflt: number) => {
 
 type PlanRow = {
   id: string; name: string; price_cents: number; tagline: string; interval_min: number; max_channels: number;
-  max_per_run: number; schedule: unknown; items: unknown; highlight: boolean; visible: boolean;
+  max_per_run: number; max_wa_groups: number; schedule: unknown; items: unknown; highlight: boolean; visible: boolean;
 };
 function rowToPlan(r: PlanRow): Plan {
   const priceCents = clamp(r.price_cents, 0, 10_000_000, 0);
@@ -52,6 +52,7 @@ function rowToPlan(r: PlanRow): Plan {
     intervalMin: clamp(r.interval_min, 10, 240, 60),
     maxChannels: Number(r.max_channels) >= 2 ? 2 : 1,
     maxPerRun: clamp(r.max_per_run, 1, MAX_PER_RUN, 3),
+    maxWaGroups: clamp(r.max_wa_groups, 1, MAX_WA_GROUPS, 1),
     schedule: parseSchedule(r.schedule, r.id),
     items: Array.isArray(r.items) ? r.items.map(String).slice(0, 12) : [],
     highlight: !!r.highlight,
@@ -121,13 +122,13 @@ export async function planExists(id: string, opts: { visibleOnly?: boolean } = {
 
 /* ------------------------------------------------------------------ por conta */
 type Override = {
-  interval_min: number | null; max_channels: number | null; max_per_run: number | null; price_cents: number | null;
+  interval_min: number | null; max_channels: number | null; max_per_run: number | null; max_wa_groups: number | null; price_cents: number | null;
   reason: string; promo: PromoRow | null; promo_active: boolean | null;
 };
 
 const getOverride = (accountId: string) =>
   one<Override>(
-    `SELECT o.interval_min, o.max_channels, o.max_per_run, o.price_cents, o.reason,
+    `SELECT o.interval_min, o.max_channels, o.max_per_run, o.max_wa_groups, o.price_cents, o.reason,
             to_jsonb(p) - 'active' AS promo, p.active AS promo_active
      FROM account_overrides o LEFT JOIN promotions p ON p.id = o.promotion_id
      WHERE o.account_id = $1`,
@@ -146,6 +147,7 @@ export async function effectivePlan(a: { id: string; plan: string; status: strin
   if (o?.interval_min != null) { plan.intervalMin = clamp(o.interval_min, 10, 240, base.intervalMin); plan.custom.push('ciclo'); }
   if (o?.max_channels != null) { plan.maxChannels = Number(o.max_channels) >= 2 ? 2 : 1; plan.custom.push('canais'); }
   if (o?.max_per_run != null) { plan.maxPerRun = clamp(o.max_per_run, 1, MAX_PER_RUN, base.maxPerRun); plan.custom.push('ofertas por rodada'); }
+  if (o?.max_wa_groups != null) { plan.maxWaGroups = clamp(o.max_wa_groups, 1, MAX_WA_GROUPS, base.maxWaGroups); plan.custom.push('grupos de WhatsApp'); }
   return plan;
 }
 

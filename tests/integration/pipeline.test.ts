@@ -16,6 +16,8 @@ type Mods = {
   accounts: typeof import('@/server/accounts');
   settings: typeof import('@/server/settings');
   plans: typeof import('@/server/plans');
+  groups: typeof import('@/server/wa-groups');
+  metrics: typeof import('@/server/metrics');
 };
 let m: Mods;
 
@@ -41,15 +43,20 @@ function fakes(opts: { waState?: 'open' | 'close' } = {}) {
   };
 }
 
-// Conta ativa configurada pelos caminhos da tela; WhatsApp sempre, Telegram opcional
-async function newAccount(opts: { telegram?: boolean; plan?: 'start' | 'pro' | 'escala' } = {}) {
+const GRUPO = '120363000000000000@g.us';
+
+// Conta ativa configurada pelos caminhos da tela; WhatsApp sempre (um grupo, salvo outros), Telegram opcional
+async function newAccount(opts: { telegram?: boolean; plan?: 'start' | 'pro' | 'escala'; groups?: string[] } = {}) {
   const id = randomUUID();
   await m.db.q(`INSERT INTO accounts (id, name, plan, status) VALUES ($1, 'Loja', $2, 'active')`, [id, opts.plan ?? 'escala']);
   const account = (await m.accounts.getAccount(id))!;
   const p = await m.plans.effectivePlan(account);
   // Configura pelos mesmos caminhos da tela (segredos criptografados)
   expect((await m.settings.saveSection(id, p, 'shopee', { shopeeAppId: '18312345678', shopeeSecret: 'segredo-shopee-teste' })).ok).toBe(true);
-  await m.settings.setSettingsRaw(id, { whatsappEnabled: true, whatsappGroupJid: '120363000000000000@g.us', whatsappGroupName: 'Ofertas' });
+  await m.settings.setSettingsRaw(id, { whatsappEnabled: true });
+  for (const [i, jid] of (opts.groups ?? [GRUPO]).entries()) {
+    expect(await m.groups.addWaGroup(id, { jid, name: `Grupo ${i + 1}` }, 50)).toEqual({ ok: true });
+  }
   if (opts.telegram) {
     const r = await m.settings.saveSection(id, p, 'telegram', {
       telegramEnabled: true, telegramBotToken: '123456789:AAEhBP0av18bHkzLcNoP4Z6S0rQf9rTeste', telegramChatId: '@canalteste',
@@ -79,6 +86,7 @@ suite('Rodada da esteira (integração)', () => {
     m = {
       db: await import('@/server/db'), pipeline: await import('@/server/pipeline'), accounts: await import('@/server/accounts'),
       settings: await import('@/server/settings'), plans: await import('@/server/plans'),
+      groups: await import('@/server/wa-groups'), metrics: await import('@/server/metrics'),
     };
     await m.db.migrate();
   });
@@ -136,5 +144,73 @@ suite('Rodada da esteira (integração)', () => {
     const rows = await deliveries(out.runId);
     expect(rows.filter((d) => d.channel === 'whatsapp').map((d) => d.success)).toEqual([false, false]);
     expect(rows.filter((d) => d.channel === 'telegram').map((d) => d.success)).toEqual([true, true]);
+  });
+
+  describe('vários grupos de WhatsApp', () => {
+    const G = ['120363000000000001@g.us', '120363000000000002@g.us', '120363000000000003@g.us'];
+    const targets = (runId: number) => m.db.q<{ target: string; item_id: string }>(
+      `SELECT target, item_id FROM deliveries WHERE run_id = $1 AND channel = 'whatsapp' ORDER BY item_id, target`, [runId]);
+
+    it('publica cada oferta em todos os grupos e registra o grupo de cada envio', async () => {
+      const account = await newAccount({ plan: 'escala', groups: G });
+      const f = fakes();
+
+      const out = await runDone(account, f.deps);
+
+      expect(out).toMatchObject({ published: 2, failures: 0 });
+      expect(f.sent.whatsapp.map((x) => x.jid)).toEqual([...G, ...G]);
+      expect(await targets(out.runId)).toEqual(['111', '222'].flatMap((item) => G.map((target) => ({ target, item_id: item }))));
+    });
+
+    it('acima do limite do plano, só os grupos mais antigos recebem', async () => {
+      const account = await newAccount({ plan: 'start', groups: G }); // Start: 1 grupo
+      const f = fakes();
+
+      await runDone(account, f.deps);
+
+      expect([...new Set(f.sent.whatsapp.map((x) => x.jid))]).toEqual([G[0]]);
+    });
+
+    it('não deixa adicionar além do limite nem repetir grupo', async () => {
+      const account = await newAccount({ plan: 'pro', groups: [] });
+      const limit = (await m.plans.effectivePlan(account)).maxWaGroups;
+      expect(limit).toBe(3);
+
+      for (const jid of G) expect(await m.groups.addWaGroup(account.id, { jid, name: '' }, limit)).toEqual({ ok: true });
+      expect(await m.groups.addWaGroup(account.id, { jid: '120363000000000009@g.us', name: '' }, limit)).toEqual({ ok: false, reason: 'limit' });
+      await m.groups.removeWaGroup(account.id, G[2]);
+      expect(await m.groups.addWaGroup(account.id, { jid: G[0], name: '' }, limit)).toEqual({ ok: false, reason: 'exists' });
+      expect((await m.groups.listWaGroups(account.id)).map((g) => g.jid)).toEqual([G[0], G[1]]);
+      // O primeiro grupo continua espelhado na configuração antiga (lida pelo admin separado)
+      expect((await m.settings.getSettings(account.id)).whatsappGroupJid).toBe(G[0]);
+    });
+
+    it('aponta o grupo com falhas seguidas, sem misturar com os que funcionam', async () => {
+      const account = await newAccount({ plan: 'escala', groups: G.slice(0, 2) });
+      const f = fakes();
+      f.deps.waSendImage = async (_acc: string, jid: string) => { if (jid === G[1]) throw new Error('not-authorized'); return 'ok'; };
+
+      await runDone(account, f.deps);
+      await runDone(account, { ...f.deps, searchOffers: async () => [offer('333', 'Air Fryer 5L')] });
+
+      expect(await m.metrics.failureStreaks(account.id)).toMatchObject({ whatsapp: true, whatsappGroups: [G[1]] });
+    });
+
+    it('migra uma única vez o grupo que estava na configuração antiga', async () => {
+      const remigrate = async () => { (globalThis as { __migrated?: unknown }).__migrated = undefined; await m.db.migrate(); };
+      const id = randomUUID();
+      await m.db.q(`INSERT INTO accounts (id, name, plan, status) VALUES ($1, 'Legado', 'pro', 'active')`, [id]);
+      await m.db.q(`INSERT INTO account_settings (account_id, key, value) VALUES ($1, 'whatsappGroupJid', $2), ($1, 'whatsappGroupName', '"Ofertas da Lu"')`,
+        [id, JSON.stringify(G[0])]);
+
+      await m.db.q(`DELETE FROM system_kv WHERE key = 'once:wa_groups_v1'`);       // como num banco que ainda não migrou
+      await remigrate();
+      expect(await m.groups.listWaGroups(id)).toEqual([{ jid: G[0], name: 'Ofertas da Lu' }]);
+
+      await m.groups.removeWaGroup(id, G[0]);                                      // o cliente remove o grupo
+      await m.db.q(`UPDATE account_settings SET value = $2 WHERE account_id = $1 AND key = 'whatsappGroupJid'`, [id, JSON.stringify(G[0])]);
+      await remigrate();                                                           // reinício não traz de volta
+      expect(await m.groups.listWaGroups(id)).toEqual([]);
+    });
   });
 });

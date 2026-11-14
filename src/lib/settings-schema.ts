@@ -66,8 +66,11 @@ export type Settings = {
   telegramBotToken: string | null;
   telegramChatId: string | null;
   whatsappEnabled: boolean;
+  // Legado: grupo único (hoje espelha o primeiro de whatsappGroups, para o admin separado)
   whatsappGroupJid: string | null;
   whatsappGroupName: string | null;
+  // Grupos que recebem as ofertas (tabela whatsapp_groups), do mais antigo para o mais novo
+  whatsappGroups: { jid: string; name: string }[];
   keywords: string;
   sortType: number;
   minCommissionRate: number;

@@ -1,6 +1,7 @@
 'use client';
 
 import { useActionState, useEffect, useRef, useState, useTransition } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Fieldset, FilterChips, SelectField, Switch, TextField } from '@/components/form-fields';
 import { Icon } from '@/components/icons';
@@ -9,7 +10,7 @@ import type { Result } from '@/server/integrations';
 import { SECTIONS, type FieldDef, type PublicSettings, type SectionId } from '@/lib/settings-schema';
 import {
   clearSecretAction, saveSectionAction, testShopeeAction, testTelegramAction,
-  waConnectAction, waDisconnectAction, waGroupsAction, waSelectGroupAction, waStatusAction, type SaveState,
+  waAddGroupAction, waConnectAction, waDisconnectAction, waGroupsAction, waRemoveGroupAction, waStatusAction, type SaveState,
 } from '../actions';
 
 /* ------------------------------------------------------------------ utilitários */
@@ -158,8 +159,8 @@ type WaUi = 'open' | 'connecting' | 'close' | 'missing' | 'error';
 
 const dateBr = new Intl.DateTimeFormat('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric', timeZone: 'America/Sao_Paulo' });
 
-export function WhatsAppPanel({ initialState, initialError, settings, dedicatedConfirmedAt }: {
-  initialState: WaUi; initialError?: string; settings: PublicSettings; dedicatedConfirmedAt: string | null;
+export function WhatsAppPanel({ initialState, initialError, settings, dedicatedConfirmedAt, maxGroups }: {
+  initialState: WaUi; initialError?: string; settings: PublicSettings; dedicatedConfirmedAt: string | null; maxGroups: number;
 }) {
   const router = useRouter();
   const [state, setState] = useState<WaUi>(initialState);
@@ -171,6 +172,9 @@ export function WhatsAppPanel({ initialState, initialError, settings, dedicatedC
   // Número dedicado: obrigatório antes do primeiro QR Code (quem já confirmou não precisa de novo)
   const [dedicatedChecked, setDedicatedChecked] = useState(false);
   const canConnect = !!dedicatedConfirmedAt || dedicatedChecked;
+  const [pickerKey, setPickerKey] = useState(0); // remonta o seletor depois de adicionar
+  const added = settings.whatsappGroups;
+  const atLimit = added.length >= maxGroups;
 
   // Enquanto o QR está na tela: confere o estado a cada 3 s e renova o QR a cada 25 s
   useEffect(() => {
@@ -208,15 +212,22 @@ export function WhatsAppPanel({ initialState, initialError, settings, dedicatedC
     else setGroups(r.groups ?? []);
   });
 
-  const choose = (jid: string) => start(async () => {
-    const g = groups?.find((x) => x.id === jid);
-    const r = await waSelectGroupAction(jid, g?.subject ?? '');
-    setGroupMsg(r.ok ? { ok: true, message: r.message! } : { ok: false, message: r.errors?.whatsappGroupJid ?? 'Erro ao salvar' });
+  const add = (jid: string) => start(async () => {
+    const r = await waAddGroupAction(jid);
+    setGroupMsg(r.ok ? { ok: true, message: r.message! } : { ok: false, message: r.errors?.whatsappGroups ?? 'Erro ao salvar' });
+    setPickerKey((k) => k + 1);
+    if (r.ok) router.refresh();
+  });
+
+  const remove = (jid: string, name: string) => start(async () => {
+    if (!confirm(`Remover “${name || 'grupo'}”? Ele deixa de receber as ofertas.`)) return;
+    const r = await waRemoveGroupAction(jid);
+    setGroupMsg(r.ok ? { ok: true, message: r.message! } : { ok: false, message: 'Erro ao remover' });
     if (r.ok) router.refresh();
   });
 
   const disconnect = () => start(async () => {
-    if (!confirm('Desconectar este WhatsApp? A esteira para de publicar no grupo até você conectar de novo.')) return;
+    if (!confirm('Desconectar este WhatsApp? A esteira para de publicar nos grupos e a lista de grupos é apagada.')) return;
     await waDisconnectAction();
     setState('missing');
     setGroups(null);
@@ -283,23 +294,51 @@ export function WhatsAppPanel({ initialState, initialError, settings, dedicatedC
       </div>
 
       <div>
-        <p className="text-title-s">Grupo de destino</p>
+        <div className="flex flex-wrap items-baseline justify-between gap-2">
+          <p className="text-title-s">Grupos de destino</p>
+          <p className="text-body-m tabular-nums text-on-surface-variant">{Math.min(added.length, maxGroups)} de {maxGroups} {maxGroups === 1 ? 'grupo' : 'grupos'} do seu plano</p>
+        </div>
         <p className="mt-1 text-body-m text-on-surface-variant">
-          {settings.whatsappGroupJid ? <>Publicando em <b className="text-on-surface">“{settings.whatsappGroupName || settings.whatsappGroupJid}”</b>.</> : 'Nenhum grupo escolhido ainda.'}
+          {added.length === 0 ? 'Nenhum grupo escolhido ainda.' : 'Cada oferta é publicada em todos os grupos da lista.'}
         </p>
-        {groups ? (
+
+        {added.length > 0 && (
+          <ul className="mt-4 divide-y divide-outline-variant/60 rounded-lg border border-outline-variant/70">
+            {added.map((g, i) => {
+              const over = i >= maxGroups;
+              return (
+                <li key={g.jid} className="flex items-center gap-3 px-4 py-2.5">
+                  <Icon name="groups" size={20} className={over ? 'text-on-surface-variant/50' : 'text-on-surface-variant'} />
+                  <div className="min-w-0 flex-1">
+                    <p className={`truncate text-body-l ${over ? 'text-on-surface-variant' : ''}`}>{g.name || g.jid}</p>
+                    {over && <p className="text-body-s text-on-surface-variant">Acima do limite do seu plano: não recebe ofertas</p>}
+                  </div>
+                  <button type="button" onClick={() => remove(g.jid, g.name)} disabled={busy} className="state-layer rounded-full px-3 py-1.5 text-label-l text-error">
+                    Remover
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+
+        {atLimit ? (
+          <p className="mt-4 text-body-m text-on-surface-variant">
+            Você chegou ao limite de {maxGroups} {maxGroups === 1 ? 'grupo' : 'grupos'} do seu plano. Para adicionar outro, remova um grupo ou <Link href="/app/conta" className="text-primary underline underline-offset-2">mude de plano</Link>.
+          </p>
+        ) : groups ? (
           <div className="mt-4 max-w-md">
             <SelectField
-              label={groups.length ? `Escolha entre ${groups.length} grupos` : 'Nenhum grupo encontrado'}
+              key={pickerKey}
+              label={groups.length ? 'Adicionar grupo' : 'Nenhum grupo encontrado'}
               name="group"
-              options={groups.map((g) => ({ value: g.id, label: g.size ? `${g.subject} (${g.size})` : g.subject }))}
-              defaultValue={settings.whatsappGroupJid ?? undefined}
-              onChange={(e) => e.target.value && choose(e.target.value)}
+              options={groups.filter((g) => !added.some((a) => a.jid === g.id)).map((g) => ({ value: g.id, label: g.size ? `${g.subject} (${g.size})` : g.subject }))}
+              onChange={(e) => e.target.value && add(e.target.value)}
             />
           </div>
         ) : (
-          <Button type="button" variant="tonal" icon="groups" className="mt-4" onClick={loadGroups} disabled={busy}>
-            {busy ? 'Carregando grupos…' : settings.whatsappGroupJid ? 'Trocar grupo' : 'Escolher grupo'}
+          <Button type="button" variant="tonal" icon="add" className="mt-4" onClick={loadGroups} disabled={busy}>
+            {busy ? 'Carregando grupos…' : added.length ? 'Adicionar outro grupo' : 'Escolher grupo'}
           </Button>
         )}
         <div className="mt-3"><Feedback result={groupMsg} /></div>

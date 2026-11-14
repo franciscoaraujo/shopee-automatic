@@ -175,7 +175,56 @@ CREATE TABLE IF NOT EXISTS account_overrides (
   reason        text NOT NULL DEFAULT '',
   updated_at    timestamptz NOT NULL DEFAULT now()
 );
+
+-- Vários grupos de WhatsApp por conta (limite por plano; NULL no override = vale o do plano).
+-- Todos os grupos recebem as mesmas ofertas da rodada.
+ALTER TABLE plans ADD COLUMN IF NOT EXISTS max_wa_groups smallint NOT NULL DEFAULT 1 CHECK (max_wa_groups BETWEEN 1 AND 50);
+ALTER TABLE account_overrides ADD COLUMN IF NOT EXISTS max_wa_groups smallint CHECK (max_wa_groups IS NULL OR max_wa_groups BETWEEN 1 AND 50);
+CREATE TABLE IF NOT EXISTS whatsapp_groups (
+  account_id  uuid NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+  jid         text NOT NULL CHECK (jid ~ '^[0-9][0-9-]*@g[.]us$'),
+  name        text NOT NULL DEFAULT '',
+  created_at  timestamptz NOT NULL DEFAULT now(),
+  PRIMARY KEY (account_id, jid)
+);
+-- Destino de cada envio (JID do grupo / chat do Telegram); NULL nos envios antigos
+ALTER TABLE deliveries ADD COLUMN IF NOT EXISTS target text;
 `;
+
+// Passos de dados que rodam uma única vez (marcados em system_kv), na mesma transação da marca.
+const ONCE: { key: string; sql: string }[] = [
+  {
+    // Grupo único das configurações (whatsappGroupJid/Name) → tabela whatsapp_groups;
+    // limites iniciais dos planos padrão (o admin pode alterar depois).
+    key: 'wa_groups_v1',
+    sql: `
+      INSERT INTO whatsapp_groups (account_id, jid, name)
+      SELECT j.account_id, j.value::jsonb #>> '{}', coalesce(n.value::jsonb #>> '{}', '')
+      FROM account_settings j
+      LEFT JOIN account_settings n ON n.account_id = j.account_id AND n.key = 'whatsappGroupName' AND NOT n.encrypted
+      WHERE j.key = 'whatsappGroupJid' AND NOT j.encrypted AND (j.value::jsonb #>> '{}') ~ '^[0-9][0-9-]*@g[.]us$'
+      ON CONFLICT DO NOTHING;
+      UPDATE plans SET max_wa_groups = 3 WHERE id = 'pro';
+      UPDATE plans SET max_wa_groups = 10 WHERE id = 'escala';`,
+  },
+];
+
+async function runOnce() {
+  for (const step of ONCE) {
+    const client = await pool().connect();
+    try {
+      await client.query('BEGIN');
+      const r = await client.query(`INSERT INTO system_kv (key, value) VALUES ($1, '1') ON CONFLICT DO NOTHING RETURNING key`, [`once:${step.key}`]);
+      if (r.rowCount) await client.query(step.sql);
+      await client.query('COMMIT');
+    } catch (err) {
+      await client.query('ROLLBACK').catch(() => {});
+      throw err;
+    } finally {
+      client.release();
+    }
+  }
+}
 
 // Carga inicial dos planos, uma única vez (marcada em system_kv): se o admin apagar ou
 // renomear um plano depois, ele não volta sozinho no próximo deploy.
@@ -187,9 +236,9 @@ async function seedPlans() {
     if (r.rowCount) {
       for (const [i, p] of DEFAULT_PLANS.entries()) {
         await client.query(
-          `INSERT INTO plans (id, name, price_cents, tagline, interval_min, max_channels, max_per_run, schedule, items, highlight, sort_order)
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11) ON CONFLICT (id) DO NOTHING`,
-          [p.id, p.name, p.priceCents, p.tagline, p.intervalMin, p.maxChannels, p.maxPerRun, JSON.stringify(p.schedule), JSON.stringify(p.items), !!p.highlight, i]
+          `INSERT INTO plans (id, name, price_cents, tagline, interval_min, max_channels, max_per_run, max_wa_groups, schedule, items, highlight, sort_order)
+           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12) ON CONFLICT (id) DO NOTHING`,
+          [p.id, p.name, p.priceCents, p.tagline, p.intervalMin, p.maxChannels, p.maxPerRun, p.maxWaGroups, JSON.stringify(p.schedule), JSON.stringify(p.items), !!p.highlight, i]
         );
       }
     }
@@ -207,6 +256,7 @@ export function migrate(): Promise<void> {
     .query(SCHEMA)
     .then(seedPlans)
     .then(() => runMigrations(pool()))
+    .then(runOnce)
     .then(() => undefined)
     .catch((err) => {
       g.__migrated = undefined; // tenta de novo na próxima chamada

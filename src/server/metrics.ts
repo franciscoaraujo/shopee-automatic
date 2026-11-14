@@ -106,16 +106,31 @@ export async function failureStreaks(accountId: string) {
        ORDER BY created_at DESC LIMIT $2`,
       [accountId, FAILURE_STREAK]
     ),
-    q<{ channel: string; ok: boolean }>(
-      `SELECT channel, ok FROM (
-         SELECT channel, success AS ok, row_number() OVER (PARTITION BY channel ORDER BY created_at DESC) AS rn
+    // Por destino: com vários grupos, um grupo com problema (ex.: número removido dele) não
+    // se mistura com os envios que deram certo nos outros.
+    q<{ channel: string; target: string | null; ok: boolean }>(
+      `SELECT channel, target, ok FROM (
+         SELECT channel, target, success AS ok, row_number() OVER (PARTITION BY channel, target ORDER BY created_at DESC) AS rn
          FROM deliveries WHERE account_id = $1 AND created_at > now() - interval '24 hours'
-       ) d WHERE rn <= $2 ORDER BY channel, rn`,
+       ) d WHERE rn <= $2 ORDER BY channel, target, rn`,
       [accountId, FAILURE_STREAK]
     ),
   ]);
-  const channel = (c: string) => isFailingStreak(deliveries.filter((d) => d.channel === c).map((d) => d.ok));
-  return { shopee: isFailingStreak(runs.map((r) => r.ok)), whatsapp: channel('whatsapp'), telegram: channel('telegram') };
+  const failingTargets = (c: string) => {
+    const byTarget = new Map<string, boolean[]>();
+    for (const d of deliveries.filter((x) => x.channel === c)) {
+      const k = d.target ?? '';
+      byTarget.set(k, [...(byTarget.get(k) ?? []), d.ok]);
+    }
+    return [...byTarget].filter(([, oks]) => isFailingStreak(oks)).map(([t]) => t);
+  };
+  const whatsappGroups = failingTargets('whatsapp');
+  return {
+    shopee: isFailingStreak(runs.map((r) => r.ok)),
+    whatsapp: whatsappGroups.length > 0,
+    whatsappGroups, // JIDs dos grupos com falhas seguidas
+    telegram: failingTargets('telegram').length > 0,
+  };
 }
 
 export async function workerHealth() {

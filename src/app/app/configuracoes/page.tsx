@@ -88,9 +88,10 @@ async function Content({ searchParams }: { searchParams: PageProps<'/app/configu
           <ShopeeForm settings={pub} />
         </Card>
 
-        <Card id="whatsapp" icon="chat" title="WhatsApp" description="Conecte um número lendo o QR Code e escolha o grupo de destino."
-          status={!raw.whatsappEnabled && wa.state !== 'open' ? { ok: false, label: 'Desativado' } : { ok: wa.state === 'open' && !!raw.whatsappGroupJid, label: wa.state === 'open' ? (raw.whatsappGroupJid ? 'Publicando' : 'Escolha o grupo') : 'Desconectado' }}>
-          <WhatsAppPanel initialState={wa.state} initialError={wa.error} settings={pub}
+        <Card id="whatsapp" icon="chat" title="WhatsApp"
+          description={<>Conecte um número lendo o QR Code e escolha os grupos de destino. Seu plano permite <b className="text-on-surface">{plan.maxWaGroups} {plan.maxWaGroups === 1 ? 'grupo' : 'grupos'}</b>.</>}
+          status={!raw.whatsappEnabled && wa.state !== 'open' ? { ok: false, label: 'Desativado' } : { ok: wa.state === 'open' && raw.whatsappGroups.length > 0, label: wa.state === 'open' ? (raw.whatsappGroups.length ? `Publicando em ${Math.min(raw.whatsappGroups.length, plan.maxWaGroups)} ${Math.min(raw.whatsappGroups.length, plan.maxWaGroups) === 1 ? 'grupo' : 'grupos'}` : 'Escolha o grupo') : 'Desconectado' }}>
+          <WhatsAppPanel initialState={wa.state} initialError={wa.error} settings={pub} maxGroups={plan.maxWaGroups}
             dedicatedConfirmedAt={account.whatsapp_dedicated_confirmed_at ? new Date(account.whatsapp_dedicated_confirmed_at).toISOString() : null} />
         </Card>
 

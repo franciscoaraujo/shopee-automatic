@@ -3,6 +3,7 @@ import type { Plan } from '@/lib/plans';
 import { FIELD, SECTIONS, type FieldDef, type PublicSettings, type SectionId, type Settings } from '@/lib/settings-schema';
 import { decrypt, encrypt } from './crypto';
 import { q, tx } from './db';
+import { listWaGroups } from './wa-groups';
 
 const aad = (accountId: string, key: string) => `${accountId}:${key}`;
 
@@ -15,7 +16,10 @@ function coerce(f: FieldDef, raw: unknown) {
 }
 
 export async function getSettings(accountId: string): Promise<Settings & { _errors: string[] }> {
-  const rows = await q<{ key: string; value: string; encrypted: boolean }>('SELECT key, value, encrypted FROM account_settings WHERE account_id = $1', [accountId]);
+  const [rows, whatsappGroups] = await Promise.all([
+    q<{ key: string; value: string; encrypted: boolean }>('SELECT key, value, encrypted FROM account_settings WHERE account_id = $1', [accountId]),
+    listWaGroups(accountId),
+  ]);
   const stored = new Map(rows.map((r) => [r.key, r]));
   const out: Record<string, unknown> = {};
   const errors: string[] = [];
@@ -31,7 +35,7 @@ export async function getSettings(accountId: string): Promise<Settings & { _erro
     }
     out[f.key] = 'default' in f ? f.default : null;
   }
-  return { ...(out as Settings), _errors: errors };
+  return { ...(out as Omit<Settings, 'whatsappGroups'>), whatsappGroups, _errors: errors };
 }
 
 const mask = (v: string | null) => (v ? (v.length >= 12 ? `•••• ${v.slice(-4)}` : '••••') : null);
@@ -163,14 +167,18 @@ export async function clearSetting(accountId: string, key: string) {
   await q('DELETE FROM account_settings WHERE account_id = $1 AND key = $2', [accountId, key]);
 }
 
+// "Publica em “Ofertas”" / "Publica em 3 grupos"
+export const describeGroups = (groups: { name: string }[]) =>
+  groups.length === 0 ? null : groups.length === 1 ? `Publica em “${groups[0].name || 'grupo'}”` : `Publica em ${groups.length} grupos`;
+
 // O que falta para a conta publicar
 export function readiness(s: Settings, waConnected: boolean | null) {
   const items = [
     { id: 'shopee', label: 'Shopee', ok: !!(s.shopeeAppId && s.shopeeSecret), detail: s.shopeeAppId && s.shopeeSecret ? 'Credenciais salvas' : 'Informe App ID e Secret' },
     {
       id: 'whatsapp', label: 'WhatsApp', enabled: s.whatsappEnabled,
-      ok: !s.whatsappEnabled || (!!s.whatsappGroupJid && waConnected !== false),
-      detail: !s.whatsappEnabled ? 'Desativado' : waConnected === false ? 'Desconectado — leia o QR Code' : s.whatsappGroupJid ? `Publica em “${s.whatsappGroupName || 'grupo'}”` : 'Escolha o grupo',
+      ok: !s.whatsappEnabled || (s.whatsappGroups.length > 0 && waConnected !== false),
+      detail: !s.whatsappEnabled ? 'Desativado' : waConnected === false ? 'Desconectado — leia o QR Code' : describeGroups(s.whatsappGroups) ?? 'Escolha o grupo',
     },
     {
       id: 'telegram', label: 'Telegram', enabled: s.telegramEnabled,
