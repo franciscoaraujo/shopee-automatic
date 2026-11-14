@@ -29,9 +29,10 @@ const NAV = [
 ];
 
 // compact: só o símbolo (ex.: topo do navigation rail do painel)
-export function Logo({ className = '', compact = false }: { className?: string; compact?: boolean }) {
+// href: destino do clique (padrão: site); no painel aponta para o próprio painel
+export function Logo({ className = '', compact = false, href = '/' }: { className?: string; compact?: boolean; href?: string }) {
   return (
-    <Link href="/" className={`flex items-center gap-2.5 font-display text-[1.2rem] font-bold tracking-tight ${className}`} aria-label={`${site.name}, início`}>
+    <Link href={href} className={`flex items-center gap-2.5 font-display text-[1.2rem] font-bold tracking-tight ${className}`} aria-label={href === '/' ? `${site.name}, início` : `${site.name}, painel`}>
       <span className={`grid place-items-center bg-primary text-on-primary ${compact ? 'size-10 rounded-xl' : 'size-8 rounded-[10px]'}`}>
         <Icon name="bolt" size={compact ? 24 : 20} />
       </span>
