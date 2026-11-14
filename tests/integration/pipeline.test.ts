@@ -114,6 +114,17 @@ suite('Rodada da esteira (integração)', () => {
     expect(f.sent.whatsapp).toEqual([]);
   });
 
+  it('não reenvia em outra rodada o mesmo produto reanunciado com outro itemId', async () => {
+    const account = await newAccount();
+    const f = fakes();
+    await runDone(account, f.deps);
+    f.deps.searchOffers = async () => [offer('333', 'garrafa  térmica 1l'), offer('444', 'Air Fryer 5L')];
+
+    const out = await runDone((await m.accounts.getAccount(account.id))!, f.deps);
+
+    expect((await deliveries(out.runId)).map((d) => d.item_id)).toEqual(['444']);
+  });
+
   it('registra a falha de um envio e continua pelo outro canal', async () => {
     const account = await newAccount({ telegram: true });
     const f = fakes();

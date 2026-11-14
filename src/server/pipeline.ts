@@ -55,15 +55,46 @@ export function formatCaptions(p: Selected, link: string) {
   return { telegram, whatsapp };
 }
 
-export function selectOffers(nodes: Offer[], s: Settings, maxPosts: number, alreadySent: Set<string>, nowSec = Math.floor(Date.now() / 1000)): Selected[] {
-  return nodes
+// Chave do produto pelo nome: a Shopee tem o mesmo produto em vários anúncios (itemIds diferentes),
+// então a deduplicação por itemId sozinha deixa repetir.
+export const productKey = (name: unknown) =>
+  String(name ?? '').normalize('NFC').toLocaleLowerCase('pt-BR').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
+
+export type AlreadySent = { ids: Set<string>; names: Set<string> };
+
+export function selectOffers(nodes: Offer[], s: Settings, maxPosts: number, alreadySent: AlreadySent, nowSec = Math.floor(Date.now() / 1000)): Selected[] {
+  const seenNames = new Set(alreadySent.names);
+  const candidates = nodes
     .filter((p) => p?.itemId && p.imageUrl && (p.offerLink || p.productLink))
-    .filter((p) => !alreadySent.has(String(p.itemId)))
+    .filter((p) => !alreadySent.ids.has(String(p.itemId)))
     .filter((p) => !p.periodEndTime || Number(p.periodEndTime) === 0 || Number(p.periodEndTime) > nowSec)
     .filter((p) => (parseFloat(p.commissionRate) || 0) >= s.minCommissionRate)
     .filter((p) => (parseFloat(p.ratingStar) || 0) >= s.minRating)
     .sort((a, b) => (parseFloat(b.commission) || 0) - (parseFloat(a.commission) || 0))
-    .slice(0, maxPosts)
+    .filter((p) => {
+      const key = productKey(p.productName);
+      if (seenNames.has(key)) return false;
+      seenNames.add(key);
+      return true;
+    });
+
+  // Uma oferta por loja primeiro (senão uma loja com várias comissões altas ocupa a rodada toda);
+  // se faltarem lojas, completa com as próximas de maior comissão.
+  const shops = new Set<string>();
+  const firstPerShop = candidates.filter((p) => {
+    const shop = String(p.shopName ?? '').trim().toLowerCase();
+    if (!shop) return true;
+    if (shops.has(shop)) return false;
+    shops.add(shop);
+    return true;
+  });
+  const picked = firstPerShop.slice(0, maxPosts);
+  for (const p of candidates) {
+    if (picked.length >= maxPosts) break;
+    if (!picked.includes(p)) picked.push(p);
+  }
+
+  return picked
     .map((p) => ({
       itemId: String(p.itemId),
       productName: p.productName,
@@ -149,12 +180,18 @@ export async function runAccount(account: Account, trigger: 'schedule' | 'manual
     searchError = describeError(err);
   }
 
-  // Deduplicação: itens enviados dentro do prazo
+  // Deduplicação: itens (por itemId e por nome do produto) enviados dentro do prazo
   const sentRows = await q<{ item_id: string }>(
     `SELECT item_id FROM sent_items WHERE account_id = $1 AND sent_at > now() - ($2 || ' days')::interval`,
     [account.id, String(s.dedupDays)]
   );
-  const selected = searchError ? [] : selectOffers(nodes, s, maxPosts, new Set(sentRows.map((r) => r.item_id)));
+  const sentNames = await q<{ product_name: string }>(
+    `SELECT DISTINCT product_name FROM deliveries
+     WHERE account_id = $1 AND success AND product_name IS NOT NULL AND created_at > now() - ($2 || ' days')::interval`,
+    [account.id, String(s.dedupDays)]
+  );
+  const alreadySent = { ids: new Set(sentRows.map((r) => r.item_id)), names: new Set(sentNames.map((r) => productKey(r.product_name))) };
+  const selected = searchError ? [] : selectOffers(nodes, s, maxPosts, alreadySent);
 
   const run = await one<{ id: number }>(
     `INSERT INTO runs (account_id, trigger, keyword, page, sort_type, found, selected, error)
