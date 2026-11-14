@@ -1,4 +1,5 @@
 // Métricas do painel do cliente — todas as consultas filtradas por account_id.
+import { FAILURE_STREAK, isFailingStreak } from '@/lib/health';
 import { one, q } from './db';
 
 export const RANGES = {
@@ -16,7 +17,7 @@ export type Summary = Awaited<ReturnType<typeof summary>>;
 
 export async function summary(accountId: string, key: RangeKey) {
   const r = RANGES[key];
-  const [kpi, prev, runs, series, errors, recentRuns] = await Promise.all([
+  const [kpi, prev, runs, series, recentRuns] = await Promise.all([
     one(
       `SELECT count(DISTINCT item_id) FILTER (WHERE success)                 AS published,
               count(*) FILTER (WHERE success AND channel = 'telegram')       AS tg_ok,
@@ -62,16 +63,6 @@ export async function summary(accountId: string, key: RangeKey) {
       [accountId, r.interval, r.unit, TZ, r.buckets]
     ),
     q(
-      `SELECT * FROM (
-         SELECT created_at, channel AS source, error AS message, product_name AS context
-         FROM deliveries WHERE account_id = $1 AND NOT success AND created_at > now() - $2::interval
-         UNION ALL
-         SELECT created_at, 'shopee' AS source, error AS message, keyword AS context
-         FROM runs WHERE account_id = $1 AND error IS NOT NULL AND created_at > now() - $2::interval
-       ) e ORDER BY created_at DESC LIMIT 15`,
-      [accountId, r.interval]
-    ),
-    q(
       `SELECT id, created_at, trigger, keyword, found, selected, error, duration_ms,
               (SELECT count(DISTINCT item_id) FROM deliveries d WHERE d.run_id = runs.id AND d.success) AS published
        FROM runs WHERE account_id = $1 ORDER BY created_at DESC LIMIT 8`,
@@ -98,12 +89,33 @@ export async function summary(accountId: string, key: RangeKey) {
       lastRunAt: runs?.last_run_at ? new Date(runs.last_run_at).toISOString() : null,
     },
     series: series.map((s) => ({ bucket: String(s.bucket), whatsapp: n(s.whatsapp), telegram: n(s.telegram), failures: n(s.failures) })),
-    errors: errors.map((e) => ({ at: new Date(e.created_at).toISOString(), source: String(e.source), message: String(e.message ?? ''), context: e.context ? String(e.context) : null })),
     runs: recentRuns.map((r) => ({
       id: Number(r.id), at: new Date(r.created_at).toISOString(), trigger: String(r.trigger), keyword: r.keyword ? String(r.keyword) : null,
       found: n(r.found), selected: n(r.selected), published: n(r.published), error: r.error ? String(r.error) : null, durationMs: n(r.duration_ms),
     })),
   };
+}
+
+// Falhas seguidas nas últimas 24 h (busca na Shopee e envio por canal). O detalhe técnico dos
+// erros fica só no /admin; o cliente vê um aviso simples quando a falha persiste.
+export async function failureStreaks(accountId: string) {
+  const [runs, deliveries] = await Promise.all([
+    q<{ ok: boolean }>(
+      `SELECT error IS NULL AS ok FROM runs
+       WHERE account_id = $1 AND created_at > now() - interval '24 hours'
+       ORDER BY created_at DESC LIMIT $2`,
+      [accountId, FAILURE_STREAK]
+    ),
+    q<{ channel: string; ok: boolean }>(
+      `SELECT channel, ok FROM (
+         SELECT channel, success AS ok, row_number() OVER (PARTITION BY channel ORDER BY created_at DESC) AS rn
+         FROM deliveries WHERE account_id = $1 AND created_at > now() - interval '24 hours'
+       ) d WHERE rn <= $2 ORDER BY channel, rn`,
+      [accountId, FAILURE_STREAK]
+    ),
+  ]);
+  const channel = (c: string) => isFailingStreak(deliveries.filter((d) => d.channel === c).map((d) => d.ok));
+  return { shopee: isFailingStreak(runs.map((r) => r.ok)), whatsapp: channel('whatsapp'), telegram: channel('telegram') };
 }
 
 export async function workerHealth() {

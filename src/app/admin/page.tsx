@@ -5,7 +5,7 @@ import { Logo } from '@/components/landing/chrome';
 import { Icon } from '@/components/icons';
 import { buttonClass } from '@/components/md';
 import { adminConfigured, isAdmin } from '@/lib/admin-auth';
-import { listAccounts, platformTotals } from '@/server/admin';
+import { listAccounts, platformTotals, recentErrors } from '@/server/admin';
 import { formatPrice } from '@/lib/plans';
 import { listPlans } from '@/server/plans';
 import { workerHealth } from '@/server/metrics';
@@ -51,7 +51,7 @@ async function Content() {
   }
   if (!(await isAdmin())) return <Shell><AdminLoginForm /></Shell>;
 
-  const [accounts, totals, worker, allPlans] = await Promise.all([listAccounts(), platformTotals(), workerHealth(), listPlans({ all: true })]);
+  const [accounts, totals, worker, allPlans, errors] = await Promise.all([listAccounts(), platformTotals(), workerHealth(), listPlans({ all: true }), recentErrors()]);
   const planOptions = allPlans.map((p) => ({ id: p.id, name: p.visible === false ? `${p.name} (oculto)` : p.name }));
 
   return (
@@ -138,6 +138,33 @@ async function Content() {
           </table>
         </div>
       )}
+
+      {/* Detalhe técnico das falhas: só aqui, o painel do cliente mostra apenas avisos simples */}
+      <section className="mt-8 rounded-xl bg-surface-lowest p-6">
+        <h2 className="text-title-l">Erros recentes <span className="text-body-m text-on-surface-variant">· 7 dias, todas as contas</span></h2>
+        {errors.length === 0 ? (
+          <p className="mt-4 flex items-center gap-2 text-body-l text-on-surface-variant"><Icon name="check_circle" className="text-success" /> Nenhum erro.</p>
+        ) : (
+          <div className="mt-4 overflow-x-auto">
+            <table className="w-full min-w-[900px] text-left text-body-m">
+              <thead className="border-b border-outline-variant text-label-m text-on-surface-variant">
+                <tr>{['Quando', 'Cliente', 'Origem', 'Erro', 'Contexto'].map((h) => <th key={h} scope="col" className="px-3 py-2 font-semibold">{h}</th>)}</tr>
+              </thead>
+              <tbody className="divide-y divide-outline-variant/70 align-top">
+                {errors.map((e, i) => (
+                  <tr key={i}>
+                    <td className="whitespace-nowrap px-3 py-2 tabular-nums text-on-surface-variant">{dt.format(new Date(e.at))}</td>
+                    <td className="px-3 py-2">{e.accountName}</td>
+                    <td className="px-3 py-2"><span className="rounded-xs bg-error-container px-1.5 text-label-s uppercase text-on-error-container">{e.source}</span></td>
+                    <td className="px-3 py-2 font-mono text-body-s">{e.message}</td>
+                    <td className="max-w-72 truncate px-3 py-2 text-on-surface-variant" title={e.context ?? undefined}>{e.context ?? '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
     </Shell>
   );
 }

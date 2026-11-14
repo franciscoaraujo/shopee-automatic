@@ -97,3 +97,24 @@ export async function deleteAccount(id: string) {
 export async function confirmEmail(accountId: string) {
   await q('UPDATE users SET email_verified_at = coalesce(email_verified_at, now()) WHERE account_id = $1', [accountId]);
 }
+
+export type AdminErrorRow = { at: string; accountId: string; accountName: string; source: string; message: string; context: string | null };
+
+// Erros técnicos de todas as contas (busca na Shopee e envios), para diagnóstico. Não aparecem para o cliente.
+export async function recentErrors(limit = 50): Promise<AdminErrorRow[]> {
+  const rows = await q(
+    `SELECT e.*, a.name AS account_name FROM (
+       SELECT created_at, account_id, channel AS source, error AS message, product_name AS context
+       FROM deliveries WHERE NOT success AND created_at > now() - interval '7 days'
+       UNION ALL
+       SELECT created_at, account_id, 'shopee' AS source, error AS message, keyword AS context
+       FROM runs WHERE error IS NOT NULL AND created_at > now() - interval '7 days'
+     ) e JOIN accounts a ON a.id = e.account_id
+     ORDER BY e.created_at DESC LIMIT $1`,
+    [limit]
+  );
+  return rows.map((e) => ({
+    at: new Date(e.created_at).toISOString(), accountId: String(e.account_id), accountName: String(e.account_name),
+    source: String(e.source), message: String(e.message ?? ''), context: e.context ? String(e.context) : null,
+  }));
+}

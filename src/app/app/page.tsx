@@ -8,7 +8,7 @@ import { effectivePlan } from '@/server/plans';
 import { describeSchedule, describeWhen, effectiveSchedule, isWithin, nextOpening } from '@/lib/schedule';
 import { isOperational } from '@/server/accounts';
 import { waState } from '@/server/integrations';
-import { RANGES, offersHistory, rangeKey, summary, workerHealth } from '@/server/metrics';
+import { RANGES, failureStreaks, offersHistory, rangeKey, summary, workerHealth } from '@/server/metrics';
 import { requireSession } from '@/server/session';
 import { getSettings, readiness } from '@/server/settings';
 import { SERIES } from '@/lib/channels';
@@ -89,8 +89,8 @@ async function Dashboard({ searchParams }: { searchParams: PageProps<'/app'>['se
   const range = rangeKey(sp.range);
   const { account, user } = await requireSession();
   const pageNum = Number(typeof sp.pagina === 'string' ? sp.pagina : 1);
-  const [s, settings, wa, worker, hist] = await Promise.all([
-    summary(account.id, range), getSettings(account.id), waState(account.id), workerHealth(), offersHistory(account.id, pageNum),
+  const [s, settings, wa, worker, hist, failing] = await Promise.all([
+    summary(account.id, range), getSettings(account.id), waState(account.id), workerHealth(), offersHistory(account.id, pageNum), failureStreaks(account.id),
   ]);
   // Mantém o período escolhido ao trocar de página
   const pageHref = (p: number) => {
@@ -128,20 +128,25 @@ async function Dashboard({ searchParams }: { searchParams: PageProps<'/app'>['se
     },
     {
       label: 'Shopee',
-      status: !settings.shopeeAppId ? 'critical' : lastRun?.error ? 'warning' : 'good',
-      detail: !settings.shopeeAppId ? 'Credenciais não informadas' : lastRun?.error ? `Última busca falhou ${ago(lastRun.at)}` : lastRun ? `Última busca ${ago(lastRun.at)}` : 'Conectada',
+      // Falha isolada da Shopee é normal e o sistema tenta de novo; só a sequência vira aviso
+      status: !settings.shopeeAppId ? 'critical' : failing.shopee ? 'warning' : 'good',
+      detail: !settings.shopeeAppId ? 'Credenciais não informadas' : failing.shopee ? 'Instável — seguimos tentando automaticamente' : lastRun ? `Última busca ${ago(lastRun.at)}` : 'Conectada',
       href: '/app/configuracoes#shopee',
     },
     {
       label: 'WhatsApp',
-      status: !settings.whatsappEnabled ? 'off' : wa.state === 'open' ? (settings.whatsappGroupJid ? 'good' : 'warning') : 'critical',
-      detail: !settings.whatsappEnabled ? 'Desativado' : wa.state === 'open' ? (settings.whatsappGroupName ? `“${settings.whatsappGroupName}”` : 'Escolha o grupo') : 'Desconectado — leia o QR Code',
+      status: !settings.whatsappEnabled ? 'off' : wa.state !== 'open' ? 'critical' : !settings.whatsappGroupJid || failing.whatsapp ? 'warning' : 'good',
+      detail: !settings.whatsappEnabled ? 'Desativado' : wa.state !== 'open' ? 'Desconectado — leia o QR Code'
+        : !settings.whatsappGroupJid ? 'Escolha o grupo'
+        : failing.whatsapp ? 'Envios falhando — seguimos tentando automaticamente'
+        : settings.whatsappGroupName ? `“${settings.whatsappGroupName}”` : 'Conectado',
       href: '/app/configuracoes#whatsapp',
     },
     {
       label: 'Telegram',
-      status: !settings.telegramEnabled ? 'off' : ready.items[2].ok ? 'good' : 'critical',
-      detail: !settings.telegramEnabled ? 'Desativado' : ready.items[2].ok ? settings.telegramChatId! : 'Configuração incompleta',
+      status: !settings.telegramEnabled ? 'off' : !ready.items[2].ok ? 'critical' : failing.telegram ? 'warning' : 'good',
+      detail: !settings.telegramEnabled ? 'Desativado' : !ready.items[2].ok ? 'Configuração incompleta'
+        : failing.telegram ? 'Envios falhando — confira se o bot ainda é admin do canal' : settings.telegramChatId!,
       href: '/app/configuracoes#telegram',
     },
   ];
@@ -209,7 +214,7 @@ async function Dashboard({ searchParams }: { searchParams: PageProps<'/app'>['se
             { l: 'Comissão potencial', v: brl(k.commission), sub: 'se cada oferta vender 1×' },
             { l: 'Entrega WhatsApp', v: delivery(k.channels.whatsapp) === null ? '—' : pct(delivery(k.channels.whatsapp)!), sub: `${k.channels.whatsapp.ok} de ${k.channels.whatsapp.total}` },
             { l: 'Entrega Telegram', v: delivery(k.channels.telegram) === null ? '—' : pct(delivery(k.channels.telegram)!), sub: `${k.channels.telegram.ok} de ${k.channels.telegram.total}` },
-            { l: 'Rodadas', v: String(k.runs), sub: k.runErrors ? `${k.runErrors} com erro` : `${k.found} produtos analisados` },
+            { l: 'Rodadas', v: String(k.runs), sub: `${k.found} produtos analisados` },
           ].map((t) => (
             <div key={t.l} className="rounded-xl border border-outline-variant/70 bg-surface-lowest p-5">
               <p className="text-label-m text-on-surface-variant">{t.l}</p>
@@ -275,42 +280,27 @@ async function Dashboard({ searchParams }: { searchParams: PageProps<'/app'>['se
         {hist.pages > 1 && <Pagination page={hist.page} pages={hist.pages} href={(p) => pageHref(p)} />}
       </section>
 
-      {/* Rodadas e erros */}
-      <section className="mt-3 grid gap-3 lg:grid-cols-2">
-        <div className="rounded-xl border border-outline-variant/70 bg-surface-lowest p-6">
-          <h2 className="text-title-l">Rodadas recentes</h2>
-          {s.runs.length === 0 ? <p className="mt-4 text-body-l text-on-surface-variant">Nenhuma rodada ainda.</p> : (
-            <table className="mt-4 w-full text-left text-body-m">
-              <thead className="text-label-m text-on-surface-variant"><tr><th className="py-2 font-semibold">Quando</th><th className="font-semibold">Palavra-chave</th><th className="text-right font-semibold">Analisados</th><th className="text-right font-semibold">Publicados</th></tr></thead>
-              <tbody className="divide-y divide-outline-variant/50 tabular-nums">
-                {s.runs.map((r) => (
-                  <tr key={r.id}>
-                    <td className="py-2">{dt.format(new Date(r.at))}{r.trigger === 'manual' && <span className="ml-1.5 rounded-xs bg-surface-high px-1 text-label-s">manual</span>}</td>
-                    <td className="max-w-40 truncate">{r.error ? <span className="inline-flex items-center gap-1 text-error"><Icon name="error" size={16} /> erro</span> : r.keyword ?? 'geral'}</td>
-                    <td className="text-right">{r.found}</td>
-                    <td className="text-right">{r.published}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          )}
-        </div>
-        <div className="rounded-xl border border-outline-variant/70 bg-surface-lowest p-6">
-          <h2 className="text-title-l">Erros do período</h2>
-          {s.errors.length === 0 ? (
-            <p className="mt-4 flex items-center gap-2 text-body-l text-on-surface-variant"><Icon name="check_circle" className="text-success" /> Nenhum erro.</p>
-          ) : (
-            <ul className="mt-4 space-y-3">
-              {s.errors.map((e, i) => (
-                <li key={i} className="text-body-m">
-                  <p className="flex items-center gap-2"><span className="rounded-xs bg-error-container px-1.5 text-label-s uppercase text-on-error-container">{e.source}</span><span className="text-body-s text-on-surface-variant">{dt.format(new Date(e.at))}</span></p>
-                  <p className="mt-0.5">{e.message}</p>
-                  {e.context && <p className="truncate text-body-s text-on-surface-variant">{e.context}</p>}
-                </li>
+      {/* Rodadas recentes (o detalhe técnico das falhas fica no /admin) */}
+      <section className="mt-3 rounded-xl border border-outline-variant/70 bg-surface-lowest p-6">
+        <h2 className="text-title-l">Rodadas recentes</h2>
+        {s.runs.length === 0 ? <p className="mt-4 text-body-l text-on-surface-variant">Nenhuma rodada ainda.</p> : (
+          <table className="mt-4 w-full text-left text-body-m">
+            <thead className="text-label-m text-on-surface-variant"><tr><th className="py-2 font-semibold">Quando</th><th className="font-semibold">Palavra-chave</th><th className="text-right font-semibold">Analisados</th><th className="text-right font-semibold">Publicados</th></tr></thead>
+            <tbody className="divide-y divide-outline-variant/50 tabular-nums">
+              {s.runs.map((r) => (
+                <tr key={r.id}>
+                  <td className="py-2">{dt.format(new Date(r.at))}{r.trigger === 'manual' && <span className="ml-1.5 rounded-xs bg-surface-high px-1 text-label-s">manual</span>}</td>
+                  <td className="max-w-60 truncate">
+                    {r.keyword ?? 'geral'}
+                    {r.error && <span className="text-on-surface-variant" title="A Shopee não respondeu nesta rodada; a próxima segue normalmente."> · Shopee não respondeu</span>}
+                  </td>
+                  <td className="text-right">{r.found}</td>
+                  <td className="text-right">{r.published}</td>
+                </tr>
               ))}
-            </ul>
-          )}
-        </div>
+            </tbody>
+          </table>
+        )}
       </section>
     </main>
   );
