@@ -9,6 +9,10 @@ import type { Account } from './accounts';
 import { one, q } from './db';
 import { describeError, searchOffers, shortLink, telegramSendPhoto, waSendImage, waState, type Offer } from './integrations';
 import { getSettings, readiness } from './settings';
+import { activeWaGroups } from './wa-groups';
+
+// Pausa entre o envio de uma mesma oferta para grupos diferentes do WhatsApp
+const WA_GROUP_GAP_MS = 3000;
 
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 const brl = (v: number) => new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(v || 0);
@@ -115,8 +119,11 @@ export async function runAccount(account: Account, trigger: 'schedule' | 'manual
   const s = await getSettings(account.id);
   const plan = await effectivePlan(account);
 
+  // Grupos que recebem as ofertas (até o limite do plano; todos recebem as mesmas ofertas)
+  const waGroups = activeWaGroups(s.whatsappGroups, plan.maxWaGroups);
+
   // Canais efetivos (respeitando o limite do plano: com 1 canal, o WhatsApp tem prioridade)
-  let useWa = s.whatsappEnabled && !!s.whatsappGroupJid;
+  let useWa = s.whatsappEnabled && waGroups.length > 0;
   let useTg = s.telegramEnabled && !!s.telegramBotToken && !!s.telegramChatId;
   if (useWa && useTg && plan.maxChannels < 2) useTg = false;
 
@@ -197,30 +204,34 @@ export async function runAccount(account: Account, trigger: 'schedule' | 'manual
     const cap = formatCaptions(p, link);
     let anyOk = false;
 
-    const record = (channel: string, ok: boolean, error: string | null, messageId: string | null) =>
+    const record = (channel: string, target: string, ok: boolean, error: string | null, messageId: string | null) =>
       q(
-        `INSERT INTO deliveries (account_id, run_id, channel, item_id, product_name, price, commission_rate, commission, affiliate_link, image_url, success, error, message_id)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)`,
-        [account.id, runId, channel, p.itemId, p.productName, p.price, p.commissionRate, p.commission, link, p.imageUrl, ok, error, messageId]
+        `INSERT INTO deliveries (account_id, run_id, channel, target, item_id, product_name, price, commission_rate, commission, affiliate_link, image_url, success, error, message_id)
+         VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)`,
+        [account.id, runId, channel, target, p.itemId, p.productName, p.price, p.commissionRate, p.commission, link, p.imageUrl, ok, error, messageId]
       );
 
     if (useWa) {
-      try {
-        const id = await waSendImage(account.id, s.whatsappGroupJid!, p.imageUrl, cap.whatsapp, `oferta-${p.itemId}.jpg`);
-        await record('whatsapp', true, null, id);
-        anyOk = true;
-      } catch (err) {
-        await record('whatsapp', false, describeError(err), null);
-        failures++;
+      for (const [g, group] of waGroups.entries()) {
+        // Entre grupos da mesma oferta, uma pausa menor que entre ofertas
+        if (g > 0) await sleep(WA_GROUP_GAP_MS);
+        try {
+          const id = await waSendImage(account.id, group.jid, p.imageUrl, cap.whatsapp, `oferta-${p.itemId}.jpg`);
+          await record('whatsapp', group.jid, true, null, id);
+          anyOk = true;
+        } catch (err) {
+          await record('whatsapp', group.jid, false, describeError(err), null);
+          failures++;
+        }
       }
     }
     if (useTg) {
       try {
         const id = await telegramSendPhoto(s.telegramBotToken!, s.telegramChatId!, p.imageUrl, cap.telegram);
-        await record('telegram', true, null, id);
+        await record('telegram', s.telegramChatId!, true, null, id);
         anyOk = true;
       } catch (err) {
-        await record('telegram', false, describeError(err), null);
+        await record('telegram', s.telegramChatId!, false, describeError(err), null);
         failures++;
       }
     }

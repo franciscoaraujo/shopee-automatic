@@ -19,6 +19,7 @@ export type Plan = {
   intervalMin: number;   // ciclo mínimo entre rodadas (minutos)
   maxChannels: 1 | 2;    // canais simultâneos (WhatsApp/Telegram)
   maxPerRun: number;     // ofertas por rodada
+  maxWaGroups: number;   // grupos de WhatsApp que recebem as ofertas
   schedule: SchedulePolicy;
   highlight?: boolean;
   visible?: boolean;     // aparece no site, no cadastro e na troca de plano
@@ -57,25 +58,28 @@ export const DEFAULT_PLANS: Plan[] = [
     intervalMin: 60,
     maxChannels: 1,
     maxPerRun: 3,
+    maxWaGroups: 1,
     schedule: { mode: 'fixed', start: '08:00', end: '16:00', days: '0,1,2,3,4,5,6' },
-    items: ['1 canal: WhatsApp ou Telegram', 'Envios das 8h às 16h (horário fixo)', 'Você escolhe o ciclo: a partir de 1 h', 'Até 3 ofertas por rodada', 'Painel de resultados'],
+    items: ['1 canal: WhatsApp ou Telegram', 'Envios das 8h às 16h (horário fixo)', 'Você escolhe o ciclo: a partir de 1 h', 'Até 3 ofertas por rodada', '1 grupo de WhatsApp', 'Painel de resultados'],
   }),
   p('pro', 'Pro', 9700, {
     tagline: 'Para grupos que já vendem',
     intervalMin: 30,
     maxChannels: 2,
     maxPerRun: 5,
+    maxWaGroups: 3,
     schedule: { mode: 'bounded', earliest: '06:00', latest: '23:00' },
     highlight: true,
-    items: ['WhatsApp e Telegram juntos', 'Você escolhe o horário (entre 6h e 23h) e os dias', 'Ciclo a partir de 30 min', 'Até 5 ofertas por rodada', 'Suporte pelo WhatsApp'],
+    items: ['WhatsApp e Telegram juntos', 'Você escolhe o horário (entre 6h e 23h) e os dias', 'Ciclo a partir de 30 min', 'Até 5 ofertas por rodada', 'Até 3 grupos de WhatsApp', 'Suporte pelo WhatsApp'],
   }),
   p('escala', 'Escala', 19700, {
     tagline: 'Para quem vive de ofertas',
     intervalMin: 10,
     maxChannels: 2,
     maxPerRun: 10,
+    maxWaGroups: 10,
     schedule: { mode: 'full' },
-    items: ['WhatsApp e Telegram juntos', 'Horário livre: 24 h, madrugada e dias à sua escolha', 'Ciclo a partir de 10 min', 'Até 10 ofertas por rodada', 'Suporte prioritário'],
+    items: ['WhatsApp e Telegram juntos', 'Horário livre: 24 h, madrugada e dias à sua escolha', 'Ciclo a partir de 10 min', 'Até 10 ofertas por rodada', 'Até 10 grupos de WhatsApp', 'Suporte prioritário'],
   }),
 ];
 
@@ -83,6 +87,7 @@ export const DEFAULT_PLANS: Plan[] = [
 // De 5 em 5 min até 1 h; depois passos maiores.
 export const INTERVAL_OPTIONS = [10, 15, 20, 25, 30, 35, 40, 45, 50, 55, 60, 75, 90, 105, 120, 150, 180, 240] as const;
 export const MAX_PER_RUN = 20;
+export const MAX_WA_GROUPS = 50;
 
 export const formatInterval = (min: number) => {
   if (min < 60) return `${min} min`;

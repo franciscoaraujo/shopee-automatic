@@ -9,7 +9,8 @@ import { q } from '@/server/db';
 import { testShopee, testTelegram, waConnect, waGroups, waLogout, waState, type Result } from '@/server/integrations';
 import { endOtherSessions, requireSession } from '@/server/session';
 import { effectivePlan } from '@/server/plans';
-import { clearSetting, getSettings, saveSection, setSettingsRaw } from '@/server/settings';
+import { clearSetting, getSettings, saveSection } from '@/server/settings';
+import { addWaGroup, clearWaGroups, removeWaGroup } from '@/server/wa-groups';
 
 export type SaveState = { ok?: boolean; errors?: Record<string, string>; message?: string; n?: number; values?: Record<string, string> };
 
@@ -89,20 +90,32 @@ export async function waGroupsAction(): Promise<{ groups?: { id: string; subject
   }
 }
 
-export async function waSelectGroupAction(jid: string, name: string): Promise<SaveState> {
+export async function waAddGroupAction(jid: string): Promise<SaveState> {
   const { account } = await requireSession();
   const groups = await waGroups(account.id).catch(() => null);
   const g = groups?.find((x) => x.id === jid);
-  if (!g) return { errors: { whatsappGroupJid: 'Grupo não encontrado. Atualize a lista.' } };
-  await setSettingsRaw(account.id, { whatsappGroupJid: g.id, whatsappGroupName: g.subject || name });
+  if (!g) return { errors: { whatsappGroups: 'Grupo não encontrado. Atualize a lista.' } };
+  const plan = await effectivePlan(account);
+  const r = await addWaGroup(account.id, { jid: g.id, name: g.subject || '' }, plan.maxWaGroups);
+  if (!r.ok) {
+    return { errors: { whatsappGroups: r.reason === 'exists' ? 'Este grupo já está na lista.'
+      : `Seu plano permite ${plan.maxWaGroups} ${plan.maxWaGroups === 1 ? 'grupo' : 'grupos'}. Remova um grupo ou mude de plano para adicionar mais.` } };
+  }
   revalidatePath('/app', 'layout');
-  return { ok: true, message: `Publicará em “${g.subject}”` };
+  return { ok: true, message: `“${g.subject}” adicionado` };
+}
+
+export async function waRemoveGroupAction(jid: string): Promise<SaveState> {
+  const { account } = await requireSession();
+  await removeWaGroup(account.id, jid);
+  revalidatePath('/app', 'layout');
+  return { ok: true, message: 'Grupo removido' };
 }
 
 export async function waDisconnectAction() {
   const { account } = await requireSession();
   await waLogout(account.id);
-  await setSettingsRaw(account.id, { whatsappGroupJid: '', whatsappGroupName: '' });
+  await clearWaGroups(account.id);
   revalidatePath('/app', 'layout');
 }
 

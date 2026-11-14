@@ -11,6 +11,9 @@ const CONCURRENCY = Number(process.env.WORKER_CONCURRENCY || 4);
 const BATCH = CONCURRENCY * 2;
 let stopping = false;
 let active = 0;
+// Contas com rodada em andamento neste processo: uma rodada longa (vários grupos) não pode
+// se sobrepor à próxima da mesma conta.
+const inFlight = new Set<string>();
 
 const log = (...a: unknown[]) => console.log(new Date().toISOString(), ...a);
 
@@ -28,6 +31,7 @@ async function claimDue(limit: number): Promise<(Account & { was_manual: boolean
        SELECT id, manual_run FROM accounts
        WHERE (status = 'active' OR (status = 'trial' AND trial_ends_at > now()))
          AND (next_run_at IS NULL OR next_run_at <= now())
+         AND NOT (id = ANY($3::uuid[]))
        ORDER BY next_run_at NULLS FIRST
        LIMIT $1
        FOR UPDATE SKIP LOCKED
@@ -35,12 +39,13 @@ async function claimDue(limit: number): Promise<(Account & { was_manual: boolean
      UPDATE accounts a SET next_run_at = now() + ${intervalSql} * interval '1 minute', manual_run = false
      FROM due WHERE a.id = due.id
      RETURNING a.*, due.manual_run AS was_manual`,
-    [limit, TRIAL_PLAN]
+    [limit, TRIAL_PLAN, [...inFlight]]
   );
 }
 
 async function processAccount(a: Account & { was_manual: boolean }) {
   active++;
+  inFlight.add(a.id);
   try {
     const out = await runAccount(a, a.was_manual ? 'manual' : 'schedule');
     if (out.status === 'done') log(`[${a.id.slice(0, 8)}] ${a.name}: ${out.found} encontrados, ${out.published} publicados${out.failures ? `, ${out.failures} falhas` : ''}${out.error ? ` — ${out.error}` : ''}`);
@@ -48,6 +53,7 @@ async function processAccount(a: Account & { was_manual: boolean }) {
     log(`[${a.id.slice(0, 8)}] erro inesperado:`, err);
   } finally {
     active--;
+    inFlight.delete(a.id);
   }
 }
 
