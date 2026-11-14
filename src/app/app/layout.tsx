@@ -28,10 +28,10 @@ async function Shell({ children }: { children: React.ReactNode }) {
       <header className="sticky top-0 z-30 border-b border-outline-variant/60 bg-surface/95 backdrop-blur lg:pl-24">
         {/* Canto superior esquerdo (≥ lg): símbolo alinhado ao navigation rail */}
         <div className="absolute inset-y-0 left-0 hidden w-24 place-items-center border-r border-outline-variant/60 lg:grid">
-          <Logo compact />
+          <Logo compact href="/app" />
         </div>
         <div className="mx-auto flex h-16 max-w-7xl items-center gap-3 px-5">
-          <Logo className="lg:hidden" />
+          <Logo className="lg:hidden" href="/app" />
           <p className="hidden truncate text-title-m lg:block">{account.name}</p>
           <span className="ml-auto inline-flex h-7 items-center rounded-sm border border-outline-variant px-2.5 text-label-m text-on-surface-variant">
             {account.status === 'trial' ? `Teste grátis · recursos do ${trialPlan.name}` : `Plano ${plan.name}`}
